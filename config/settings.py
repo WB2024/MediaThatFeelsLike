@@ -34,6 +34,8 @@ env = environ.Env(
     NAVIDROME_URL=(str, ""),
     NAVIDROME_USERNAME=(str, ""),
     NAVIDROME_PASSWORD=(str, ""),
+    SLSKD_URL=(str, ""),
+    SLSKD_API_KEY=(str, ""),
     DATA_DIR=(str, ""),
 )
 environ.Env.read_env(BASE_DIR / ".env")
@@ -169,6 +171,7 @@ SERVICE_ENV_DEFAULTS = {
         "username": env("NAVIDROME_USERNAME"),
         "password": env("NAVIDROME_PASSWORD"),
     },
+    "slskd": {"url": env("SLSKD_URL"), "api_key": env("SLSKD_API_KEY")},
 }
 
 LOGGING = {

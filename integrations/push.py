@@ -7,6 +7,7 @@ from .clients.jellyfin import JellyfinClient
 from .clients.lidarr import LidarrClient
 from .clients.navidrome import NavidromeClient
 from .clients.radarr import RadarrClient
+from .clients.slskd import SlskdClient
 from .models import ServiceConfig
 
 CLIENTS = {
@@ -14,8 +15,14 @@ CLIENTS = {
     ServiceConfig.Service.LIDARR: LidarrClient,
     ServiceConfig.Service.JELLYFIN: JellyfinClient,
     ServiceConfig.Service.NAVIDROME: NavidromeClient,
+    ServiceConfig.Service.SLSKD: SlskdClient,
 }
-OK_STATUSES = {"added", "exists", "playlisted", "artist_only"}
+OK_STATUSES = {"added", "exists", "playlisted", "artist_only", "queued"}
+# A slskd search+download can take up to ~max_wait seconds each; this is a synchronous
+# htmx request behind gunicorn's --timeout, so a single push processes at most this many
+# recommendations -- the rest stay for a follow-up click (already-queued ones are
+# skipped automatically, so repeated clicks work through a long list safely).
+SLSKD_MAX_PER_PUSH = 6
 
 
 def client_for(service):
@@ -45,7 +52,31 @@ def push_post(post, service, playlist_name=None):
 
     if service in (ServiceConfig.Service.RADARR, ServiceConfig.Service.LIDARR):
         return _push_arr(client, service, recs)
+    if service == ServiceConfig.Service.SLSKD:
+        return _push_slskd(client, recs)
     return _push_playlist(client, service, post, recs, playlist_name)
+
+
+def _push_slskd(client, recs):
+    already = [r for r in recs if (r.integration_state or {}).get("slskd", {}).get("status") == "queued"]
+    pending = [r for r in recs if r not in already]
+    batch, rest = pending[:SLSKD_MAX_PER_PUSH], pending[SLSKD_MAX_PER_PUSH:]
+
+    results = []
+    for rec in batch:
+        try:
+            status, detail = client.push(rec, options=client.config.options)
+        except ServiceError as exc:
+            status, detail = "error", str(exc)
+        results.append(_record(rec, ServiceConfig.Service.SLSKD, status, detail))
+
+    ok = sum(1 for r in results if r["status"] in OK_STATUSES)
+    summary = f"{ok} of {len(batch)} queued on slskd" if batch else "Nothing to do -- every included recommendation is already queued."
+    if already:
+        summary += f" ({len(already)} already queued from an earlier push)"
+    if rest:
+        summary += f". {len(rest)} more waiting -- press the button again to continue (each search takes a few seconds)."
+    return {"results": results, "summary": summary, "error": None}
 
 
 def _push_arr(client, service, recs):

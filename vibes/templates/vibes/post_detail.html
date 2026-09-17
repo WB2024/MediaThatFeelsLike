@@ -78,6 +78,11 @@
           <span class="label">▶ Navidrome playlist</span><span class="htmx-indicator">working…</span>
         </button>
       {% endif %}
+      {% if can_slskd %}
+        <button class="btn" hx-post="{% url 'integrations:push' post.pk 'slskd' %}" hx-target="#action-results" hx-swap="innerHTML" hx-confirm="Search Soulseek and grab the best match for included tracks (a few at a time -- press again for more)?">
+          <span class="label">⇩ Grab via slskd</span><span class="htmx-indicator">searching…</span>
+        </button>
+      {% endif %}
       {% if not services %}
         <a class="btn ghost" href="{% url 'integrations:settings' %}">Configure services →</a>
       {% endif %}

@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **slskd integration**: a "Grab via slskd" button on music vibe pages searches
+  Soulseek, ranks results (title match, format/bitrate, weighted toward free upload
+  slots and short queues over marginal quality), and queues the best file for
+  download -- or just reports it if "auto-download" is off. Verified against a live
+  slskd instance including a full search → download → cleanup round trip. Processes
+  up to 6 recommendations per push (each search takes several seconds) and skips
+  ones already queued from an earlier push.
 - Backfill: `sync_reddit --backfill N` (and a field on the Settings page's Sync
   form) pages N pages further back into each source's history using the archive
   backend's `before` cursor. Previously the sync only ever pulled the single most

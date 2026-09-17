@@ -13,7 +13,7 @@
   <div class="panel-body">
     <div class="field">
       <label>URL</label>
-      <input type="url" name="url" value="{{ svc.url }}" placeholder="{% if svc.service == 'radarr' %}http://192.168.1.110:7878{% elif svc.service == 'lidarr' %}http://192.168.1.110:8686{% elif svc.service == 'jellyfin' %}http://192.168.1.111:8096{% else %}http://192.168.1.110:4534{% endif %}">
+      <input type="url" name="url" value="{{ svc.url }}" placeholder="{% if svc.service == 'radarr' %}http://192.168.1.110:7878{% elif svc.service == 'lidarr' %}http://192.168.1.110:8686{% elif svc.service == 'jellyfin' %}http://192.168.1.111:8096{% elif svc.service == 'slskd' %}http://192.168.1.110:5030{% else %}http://192.168.1.110:4534{% endif %}">
     </div>
     {% if svc.uses_api_key %}
       <div class="field">
@@ -78,6 +78,14 @@
           <select name="user_id">{% for u in opts.users %}<option value="{{ u.id }}" {% if u.id == opts.user_id %}selected{% endif %}>{{ u.name }}{% if u.admin %} (admin){% endif %}</option>{% endfor %}</select>
         {% else %}<input type="text" name="user_id" value="{{ opts.user_id|default:'' }}" placeholder="press Test to load users">{% endif %}
       </div>
+    {% endif %}
+    {% if svc.service == 'slskd' %}
+      <div class="field">
+        <label>Search timeout (seconds)</label>
+        <input type="number" name="max_wait" value="{{ opts.max_wait|default:15 }}" min="5" max="30" style="width:80px">
+        <span class="hint">how long to wait for Soulseek peers to respond before ranking whatever's arrived. Higher finds more but takes longer -- pushes process up to 6 recommendations at a time either way.</span>
+      </div>
+      <label class="status-line"><input type="checkbox" name="auto_download" {% if opts.auto_download|default_if_none:True %}checked{% endif %}> download the best match automatically (unticked: search only, report what was found)</label>
     {% endif %}
 
     <div class="form-actions">

@@ -197,6 +197,19 @@ action), and all read their connection details from `ServiceConfig`.
   dropped.
 - **Navidrome** — same idea via the Subsonic API: `search3.view` per title, then
   `createPlaylist.view` with the resolved song IDs.
+- **slskd** (music only) — for each included recommendation: `POST /api/v0/searches`,
+  poll `GET /api/v0/searches/{id}` until complete or a configurable timeout (default 15s)
+  elapses, rank the file results, then `POST /api/v0/transfers/downloads/{username}` for
+  the winner (or just report it, if "auto-download" is turned off on the Settings page).
+  Ranking favours availability over a marginal quality gain -- a peer with no free
+  upload slot and a long queue may take hours or never finish if they go offline, so
+  `hasFreeUploadSlot` and `queueLength` are weighted more heavily than format/bitrate,
+  after a similarity + extension + length filter rules out non-audio files and obvious
+  mismatches. Verified directly against a live slskd 0.26 instance, including a real
+  search → download → cleanup round trip. Because a search can take several seconds,
+  a single push processes at most `SLSKD_MAX_PER_PUSH` (6) recommendations and skips
+  ones already queued from an earlier push, so working through a long list is a few
+  clicks rather than one request that risks the gunicorn worker timeout.
 
 Every integration action returns a per-item result (added / already existed / not found /
 error) rather than a single pass/fail for the whole batch — with a curated list of maybe

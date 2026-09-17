@@ -6,7 +6,7 @@
     {% if results %}
     <ul>
       {% for r in results %}
-        <li class="{% if r.status == 'added' or r.status == 'exists' or r.status == 'playlisted' %}ok{% elif r.status == 'error' or r.status == 'not_found' %}err{% else %}skip{% endif %}">
+        <li class="{% if r.status == 'added' or r.status == 'exists' or r.status == 'playlisted' or r.status == 'queued' %}ok{% elif r.status == 'error' or r.status == 'not_found' %}err{% else %}skip{% endif %}">
           <b>{{ r.rec.display_label }}</b> — {{ r.status }}: {{ r.detail }}
         </li>
       {% endfor %}

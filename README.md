@@ -26,9 +26,11 @@ From there:
   searched, with a per-item result line
 - **Create a playlist** in **Jellyfin** or **Navidrome** from everything the library
   already has
+- **Grab via slskd** (music) — searches Soulseek and queues the best matching file
+  straight into your slskd downloads, a few tracks at a time
 
-Radarr/Lidarr/Jellyfin/Navidrome are configured once on the Settings page; credentials
-are encrypted at rest and never shown again.
+Radarr/Lidarr/Jellyfin/Navidrome/slskd are configured once on the Settings page;
+credentials are encrypted at rest and never shown again.
 
 ## Screenshots
 
@@ -102,9 +104,9 @@ Everything is in `.env` (see `.env.example` for every key):
 - `REDDIT_BACKEND` (`auto` / `archive` / `direct` / `praw`), `ARCHIVE_USER_AGENT`,
   `REDDIT_FETCH_USER_AGENT`, optional `REDDIT_CLIENT_ID` / `SECRET`
 - `RADARR_URL` / `RADARR_API_KEY`, `LIDARR_URL` / `LIDARR_API_KEY`, `JELLYFIN_URL` /
-  `JELLYFIN_API_KEY`, `NAVIDROME_URL` / `NAVIDROME_USERNAME` / `NAVIDROME_PASSWORD` —
-  only used to seed the Settings page on first run; the Settings page is the source of
-  truth afterwards
+  `JELLYFIN_API_KEY`, `NAVIDROME_URL` / `NAVIDROME_USERNAME` / `NAVIDROME_PASSWORD`,
+  `SLSKD_URL` / `SLSKD_API_KEY` — only used to seed the Settings page on first run; the
+  Settings page is the source of truth afterwards
 
 Subreddits are managed on the Settings page too (add more sources to either section).
 
@@ -120,6 +122,13 @@ Subreddits are managed on the Settings page too (add more sources to either sect
   waits for Lidarr's refresh and re-monitors it.
 - **Jellyfin** / **Navidrome**: each recommendation is fuzzy-matched against the library;
   the ones found go into a new playlist, the rest are listed as "not in the library".
+- **slskd**: searches Soulseek (waits up to a configurable timeout, default 15s), picks
+  the best audio file by title match + format/bitrate, weighted toward peers with a free
+  upload slot and a short queue (a "better" file behind 100 people in line may never
+  actually arrive). Downloads the winner automatically unless "auto-download" is turned
+  off on the Settings page, in which case it just reports what it found. A push handles
+  up to 6 recommendations at a time (each search takes a few seconds) — press the button
+  again to work through a longer list; anything already queued is skipped automatically.
 
 ## Status
 

@@ -93,6 +93,7 @@ def post_detail(request, pk):
         "can_lidarr": kind == "music" and "lidarr" in services,
         "can_jellyfin": "jellyfin" in services,
         "can_navidrome": kind == "music" and "navidrome" in services,
+        "can_slskd": kind == "music" and "slskd" in services,
         "cooldown": SyncRun.cooldown_until(),
         **_rec_context(post),
     }

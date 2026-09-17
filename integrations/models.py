@@ -13,6 +13,7 @@ class ServiceConfig(models.Model):
         LIDARR = "lidarr", "Lidarr"
         JELLYFIN = "jellyfin", "Jellyfin"
         NAVIDROME = "navidrome", "Navidrome"
+        SLSKD = "slskd", "slskd"
 
     service = models.CharField(max_length=20, choices=Service.choices, unique=True)
     enabled = models.BooleanField(default=True)
@@ -51,7 +52,7 @@ class ServiceConfig(models.Model):
     def kind(self):
         """Which section this service acts on."""
         return "movies" if self.service in (self.Service.RADARR,) else (
-            "music" if self.service in (self.Service.LIDARR, self.Service.NAVIDROME) else "both"
+            "music" if self.service in (self.Service.LIDARR, self.Service.NAVIDROME, self.Service.SLSKD) else "both"
         )
 
     @classmethod

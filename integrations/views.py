@@ -31,8 +31,10 @@ class ServiceForm(forms.Form):
     artist_monitor = forms.CharField(required=False)
     user_id = forms.CharField(required=False)
     search_on_add = forms.BooleanField(required=False)
+    max_wait = forms.IntegerField(required=False, min_value=5, max_value=30)
+    auto_download = forms.BooleanField(required=False)
 
-    OPTION_FIELDS = ("root_folder", "quality_profile_id", "metadata_profile_id", "minimum_availability", "artist_monitor", "user_id")
+    OPTION_FIELDS = ("root_folder", "quality_profile_id", "metadata_profile_id", "minimum_availability", "artist_monitor", "user_id", "max_wait")
 
     def apply(self, config):
         d = self.cleaned_data
@@ -48,6 +50,7 @@ class ServiceForm(forms.Form):
             if d.get(key):
                 opts[key] = d[key]
         opts["search_on_add"] = d["search_on_add"]
+        opts["auto_download"] = d["auto_download"]
         config.options = opts
         config.save()
 
