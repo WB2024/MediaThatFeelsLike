@@ -4,6 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Backfill: `sync_reddit --backfill N` (and a field on the Settings page's Sync
+  form) pages N pages further back into each source's history using the archive
+  backend's `before` cursor. Previously the sync only ever pulled the single most
+  recent page per source, so "Load more" ran out once that page was exhausted.
+
 ### Fixed
 
 - Media files (cached post images) 404'd in production: `django.conf.urls.static.static()`

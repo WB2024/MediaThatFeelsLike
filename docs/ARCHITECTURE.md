@@ -98,11 +98,17 @@ Per run, per enabled `Source`:
    by 3+ since its last fetch and that hasn't been fetched in the last 6 hours. The queue
    is capped per run (`--max-comments`, split evenly across sources) so a cold start
    spreads over several runs rather than one huge burst.
-3. For each queued post, fetch the comment tree (one request), store the flattened
+3. Optionally (`--backfill N`), page N pages further back using the oldest post
+   already stored as the cursor (`ArchiveClient.listing(..., before=<ts>)`); stops
+   early once a page has no new posts or the archive is exhausted. Only the archive
+   backend supports this (`Client.supports_backfill`) -- Reddit's own listings
+   aren't a simple timestamp cursor. Comment fetches for backfilled posts still go
+   through the normal per-run cap, so a big backfill queues up over several runs.
+4. For each queued post, fetch the comment tree (one request), store the flattened
    comments on the post (`Post.comments`, so the parser can be re-run offline), and
    rebuild its `Recommendation` rows -- preserving rows a human has edited or pushed to a
    service, and manual additions.
-4. Download any uncached images to `MEDIA_ROOT` and write a 640px JPEG thumbnail for
+5. Download any uncached images to `MEDIA_ROOT` and write a 640px JPEG thumbnail for
    the grid (the tile grid never hotlinks Reddit's CDN). Posts whose images have all
    vanished are hidden.
 

@@ -9,25 +9,29 @@ from vibes.models import Post, Recommendation, Source
 
 class FakeClient:
     requests_made = 0
+    supports_backfill = False
 
-    def __init__(self, posts, comments_by_id):
+    def __init__(self, posts, comments_by_id, pages=None):
         self.posts = posts
         self.comments_by_id = comments_by_id
+        self.pages = pages or []  # extra pages served in order when `before` is passed
 
-    def listing(self, subreddit, sort="hot", limit=50, time_filter=None):
+    def listing(self, subreddit, sort="hot", limit=50, time_filter=None, before=None):
         self.requests_made += 1
-        return self.posts
+        if before is None:
+            return self.posts
+        return self.pages.pop(0) if self.pages else []
 
     def post_with_comments(self, subreddit, post_id, limit=500):
         self.requests_made += 1
         return {}, self.comments_by_id.get(post_id, [])
 
 
-def gallery_post(pid, title, num_comments=5):
+def gallery_post(pid, title, num_comments=5, created_utc=1789600000):
     return {
         "id": pid, "title": title, "author": "someone", "permalink": f"/r/MoviesThatFeelLike/comments/{pid}/x/",
         "url": f"https://www.reddit.com/gallery/{pid}", "score": 42, "num_comments": num_comments,
-        "created_utc": 1789600000, "is_gallery": True,
+        "created_utc": created_utc, "is_gallery": True,
         "media_metadata": {"abc": {"status": "valid", "s": {"u": "https://preview.redd.it/abc.jpg?width=100&amp;s=1", "x": 100, "y": 80}}},
         "gallery_data": {"items": [{"media_id": "abc"}]},
     }
@@ -111,3 +115,38 @@ def test_blocked_run_sets_cooldown(source, settings):
     run = run_sync(source, Blocked([], {}))
     assert run.blocked and run.status == SyncRun.Status.PARTIAL
     assert SyncRun.cooldown_until() is not None
+
+
+def test_backfill_pages_further_back_and_stops_at_the_archive_start(source):
+    client = FakeClient(
+        [gallery_post("new1", "recent", created_utc=3000)],
+        {},
+        pages=[
+            [gallery_post("old1", "older", created_utc=2000), gallery_post("old2", "older still", created_utc=1000)],
+            [],  # archive has nothing before that -- backfill should stop here
+        ],
+    )
+    client.supports_backfill = True
+    run = run_sync(source, client, backfill_pages=5, max_comment_fetches=0)
+    assert run.posts_new == 3  # 1 from the normal listing + 2 backfilled
+    assert set(Post.objects.values_list("reddit_id", flat=True)) == {"new1", "old1", "old2"}
+    assert "backfill reached the start of the archive" in run.log
+    # Stopped early (2 pages used) rather than exhausting all 5 requested.
+    assert client.requests_made == 1 + 2  # 1 normal listing + 2 backfill pages
+
+
+def test_backfill_stops_when_a_page_has_nothing_new(source):
+    dup = gallery_post("new1", "recent", created_utc=3000)
+    client = FakeClient([dup], {}, pages=[[dup]])  # "older" page is actually the same post
+    client.supports_backfill = True
+    run = run_sync(source, client, backfill_pages=5, max_comment_fetches=0)
+    assert run.posts_new == 1
+    assert client.requests_made == 1 + 1  # didn't keep paging once a page had 0 new posts
+
+
+def test_backfill_skipped_for_a_backend_that_doesnt_support_it(source):
+    client = FakeClient([gallery_post("new1", "recent")], {})  # supports_backfill=False by default
+    run = run_sync(source, client, backfill_pages=3, max_comment_fetches=0)
+    assert run.posts_new == 1
+    assert "backfill skipped" in run.log
+    assert client.requests_made == 1  # never attempted a backfill request

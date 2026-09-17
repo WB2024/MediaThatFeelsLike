@@ -36,7 +36,8 @@
       {% csrf_token %}
       <button class="btn primary" type="submit" {% if run and run.is_running %}disabled{% endif %}>Sync now</button>
       <label class="status-line">max comment threads this run <input type="number" name="max_comments" value="40" min="1" max="300" style="width:80px"></label>
-      <span class="hint status-line">Cron does this every 30 min in production; this button is for impatience and first runs.</span>
+      <label class="status-line">backfill <input type="number" name="backfill" value="0" min="0" max="50" style="width:60px"> older page(s)</label>
+      <span class="hint status-line">Cron does this every 30 min in production; this button is for impatience, first runs, and pulling more history (archive backend only -- 1 page ≈ 100 more posts, whose comment fetches then queue up over the usual cap).</span>
     </form>
     {% include "reddit_sync/_status.html" %}
   </div>

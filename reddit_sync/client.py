@@ -84,6 +84,8 @@ def flatten_comments(children, depth=0, max_depth=3, out=None):
 class FetchClient:
     """Unauthenticated old.reddit.com JSON client with pacing and block detection."""
 
+    supports_backfill = False
+
     def __init__(self, user_agent=None, min_interval=None, jitter=None, timeout=None):
         self.session = requests.Session()
         self.session.headers.update(
@@ -135,7 +137,9 @@ class FetchClient:
 
     # -- public API -----------------------------------------------------------------
 
-    def listing(self, subreddit, sort="hot", limit=50, time_filter=None):
+    def listing(self, subreddit, sort="hot", limit=50, time_filter=None, before=None):
+        # `before` (a backfill cursor) isn't meaningful for reddit.com's own listings --
+        # only the archive backend can page arbitrarily far back in time.
         params = {"limit": min(int(limit), 100)}
         if sort == "top" and time_filter:
             params["t"] = time_filter
@@ -159,6 +163,8 @@ class FetchClient:
 class PrawClient:
     """Same interface as FetchClient, over the official API. Only constructed when
     OAuth credentials are present."""
+
+    supports_backfill = False
 
     def __init__(self):
         import praw  # imported lazily so the package is only needed on this path
@@ -197,7 +203,9 @@ class PrawClient:
                 d[key] = getattr(s, key)
         return d
 
-    def listing(self, subreddit, sort="hot", limit=50, time_filter=None):
+    def listing(self, subreddit, sort="hot", limit=50, time_filter=None, before=None):
+        # PRAW's own pagination (`.params={"after": ...}`) doesn't map onto a simple
+        # timestamp cursor; only the archive backend backfills.
         self.requests_made += 1
         sub = self.reddit.subreddit(subreddit)
         if sort == "top":
@@ -242,6 +250,8 @@ class ArchiveClient:
     with a JSON API. Posts appear within the hour; a second retrieval pass ~a day later
     refreshes scores, comment counts and the comment tree. Limits: 100 items per page,
     recency sort only (popularity ordering is done in our own grid)."""
+
+    supports_backfill = True
 
     def __init__(self, min_interval=1.0, jitter=0.5, timeout=60):
         self.session = requests.Session()

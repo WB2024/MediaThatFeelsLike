@@ -40,12 +40,13 @@ def trim_raw(post):
 
 
 class Syncer:
-    def __init__(self, run, client=None, cacher=None, max_comment_fetches=40, refresh=False, cache_images=True):
+    def __init__(self, run, client=None, cacher=None, max_comment_fetches=40, refresh=False, cache_images=True, backfill_pages=0):
         self.run = run
         self.client = client or get_client()
         self.cacher = cacher or (ImageCacher() if cache_images else None)
         self.max_comment_fetches = max_comment_fetches
         self.refresh = refresh
+        self.backfill_pages = backfill_pages
         self.comment_fetches = 0
         self.blocked = False
 
@@ -110,16 +111,11 @@ class Syncer:
             self.log(f"r/{source.subreddit}: listing failed ({exc})", logging.WARNING)
             return
 
-        new_posts, existing_posts = [], []
-        for data in posts:
-            if data.get("stickied") or data.get("is_self") and not data.get("selftext") and not extract_images(data):
-                continue
-            post, created = self.upsert_post(source, data)
-            (new_posts if created else existing_posts).append(post)
-        self.run.posts_seen += len(new_posts) + len(existing_posts)
-        self.run.posts_new += len(new_posts)
-        self._save_counts()
+        new_posts, existing_posts = self._ingest(source, posts)
         self.log(f"r/{source.subreddit}: {len(posts)} posts in listing, {len(new_posts)} new")
+
+        if self.backfill_pages and not self.blocked:
+            new_posts += self._backfill(source)
 
         # Comments: new posts first, then anything whose thread has grown.
         queue = new_posts + [p for p in existing_posts if self.refresh or p.needs_comment_fetch]
@@ -132,6 +128,60 @@ class Syncer:
 
         source.last_synced_at = timezone.now()
         source.save(update_fields=["last_synced_at"])
+
+    def _ingest(self, source, posts):
+        """Upsert a page of listing results. Returns (new_posts, existing_posts)."""
+        new_posts, existing_posts = [], []
+        for data in posts:
+            if data.get("stickied") or data.get("is_self") and not data.get("selftext") and not extract_images(data):
+                continue
+            post, created = self.upsert_post(source, data)
+            (new_posts if created else existing_posts).append(post)
+        self.run.posts_seen += len(new_posts) + len(existing_posts)
+        self.run.posts_new += len(new_posts)
+        self._save_counts()
+        return new_posts, existing_posts
+
+    def _backfill(self, source):
+        """Page further back into the subreddit's history using the oldest post we
+        already have as the cursor. Only the archive backend supports this -- Reddit's
+        own listings aren't a simple timestamp-ordered cursor. Comment threads for
+        whatever this pulls in still go through the normal per-run fetch cap, so a big
+        backfill just queues up over several runs rather than fetching everything at once.
+        """
+        if not getattr(self.client, "supports_backfill", False):
+            self.log(f"r/{source.subreddit}: backfill skipped -- {type(self.client).__name__} can't page by time")
+            return []
+
+        all_new = []
+        for page in range(self.backfill_pages):
+            oldest = source.posts.order_by("created_utc").values_list("created_utc", flat=True).first()
+            if oldest is None:
+                break
+            try:
+                older = self.client.listing(
+                    source.subreddit, sort=source.listing, limit=source.fetch_limit,
+                    time_filter=source.time_filter, before=int(oldest.timestamp()),
+                )
+            except RedditBlocked as exc:
+                self.blocked = True
+                self.run.errors += 1
+                self.log(f"r/{source.subreddit}: backfill blocked ({exc}); stopping", logging.WARNING)
+                break
+            except RedditError as exc:
+                self.run.errors += 1
+                self.log(f"r/{source.subreddit}: backfill page {page + 1} failed ({exc})", logging.WARNING)
+                break
+            if not older:
+                self.log(f"r/{source.subreddit}: backfill reached the start of the archive")
+                break
+            new_posts, _ = self._ingest(source, older)
+            self.log(f"r/{source.subreddit}: backfill page {page + 1}/{self.backfill_pages}: {len(older)} posts, {len(new_posts)} new")
+            all_new += new_posts
+            if not new_posts:
+                # Nothing new on this page -- we've already caught up to here before.
+                break
+        return all_new
 
     def upsert_post(self, source, data):
         defaults = {

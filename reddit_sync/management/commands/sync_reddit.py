@@ -22,6 +22,12 @@ class Command(BaseCommand):
         parser.add_argument("--refresh", action="store_true", help="Re-fetch comments for every post in the listing, not just new/grown ones.")
         parser.add_argument("--no-images", action="store_true", help="Skip downloading/caching images.")
         parser.add_argument("--force", action="store_true", help="Ignore an apparently running sync.")
+        parser.add_argument(
+            "--backfill", type=int, default=0, metavar="N",
+            help="Page N pages further back into each source's history (archive backend only). "
+            "Comment fetches for what this pulls in still go through --max-comments, so a big "
+            "backfill just queues up over several runs rather than all at once.",
+        )
 
     def handle(self, *args, **opts):
         running = SyncRun.running()
@@ -42,7 +48,10 @@ class Command(BaseCommand):
             raise CommandError("No matching sources. Run `manage.py bootstrap` or add one in admin.")
 
         run = SyncRun.objects.create(trigger=SyncRun.Trigger.CLI)
-        syncer = Syncer(run, max_comment_fetches=opts["max_comments"], refresh=opts["refresh"], cache_images=not opts["no_images"])
+        syncer = Syncer(
+            run, max_comment_fetches=opts["max_comments"], refresh=opts["refresh"],
+            cache_images=not opts["no_images"], backfill_pages=opts["backfill"],
+        )
         if opts["limit"]:
             for s in sources:
                 s.fetch_limit = opts["limit"]

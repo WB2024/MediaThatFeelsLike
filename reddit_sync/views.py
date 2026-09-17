@@ -21,7 +21,11 @@ def status_panel(request):
 @require_POST
 def start(request):
     max_comments = request.POST.get("max_comments", "40")
-    run = start_background_sync(max_comment_fetches=int(max_comments) if max_comments.isdigit() else 40)
+    backfill = request.POST.get("backfill", "0")
+    run = start_background_sync(
+        max_comment_fetches=int(max_comments) if max_comments.isdigit() else 40,
+        backfill_pages=int(backfill) if backfill.isdigit() else 0,
+    )
     if run is None:
         until = SyncRun.cooldown_until()
         if until:
