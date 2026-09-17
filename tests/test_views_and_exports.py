@@ -1,4 +1,7 @@
+import contextlib
+
 import pytest
+from django.core.files.base import ContentFile
 from django.urls import reverse
 from django.utils import timezone
 
@@ -57,6 +60,29 @@ def test_exports(client, post):
     txt = client.get(reverse("exports:download", args=[post.pk, "txt"]))
     assert txt["Content-Disposition"].endswith('.txt"')
     assert client.get(reverse("exports:download", args=[post.pk, "xml"])).status_code == 404
+
+
+def test_media_files_served_even_with_debug_false(client, post, settings):
+    """Regression: django.conf.urls.static.static() is a no-op when DEBUG=False, which
+    would 404 every cached post image in production. See config/urls.py.
+
+    MEDIA_ROOT isn't overridden here because the media URL pattern's document_root is
+    resolved once when the urlconf loads, before any per-test settings override could
+    take effect -- so this writes into (and cleans up from) the real configured root.
+    """
+    settings.DEBUG = False
+    from vibes.models import PostImage
+
+    image = PostImage.objects.create(post=post, order=0, source_url="https://example.test/x.jpg")
+    image.thumb.save("regression_test.jpg", ContentFile(b"fake-jpeg-bytes"), save=True)
+    try:
+        r = client.get(image.thumb.url)
+        assert r.status_code == 200 and b"".join(r.streaming_content) == b"fake-jpeg-bytes"
+    finally:
+        # Windows can briefly hold the file handle open past the response finishing
+        # (AV/indexer); cleanup is tidiness, not the point of the test.
+        with contextlib.suppress(OSError):
+            image.thumb.delete(save=False)
 
 
 def test_settings_page_and_encrypted_save(client, db, settings):

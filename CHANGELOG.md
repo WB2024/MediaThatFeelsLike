@@ -4,6 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Media files (cached post images) 404'd in production: `django.conf.urls.static.static()`
+  is a no-op unless `DEBUG=True`. `config/urls.py` now serves `MEDIA_URL` unconditionally.
+  Found immediately after the first production deploy.
+
 ### Added
 
 - The Django application itself: `config/` project, `vibes` (models, tile grids, detail
