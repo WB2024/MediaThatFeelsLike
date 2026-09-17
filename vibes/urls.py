@@ -1,11 +1,14 @@
 from django.urls import path
 
-from . import views
+from . import api, views
 
 app_name = "vibes"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    # JSON API -- built for the Glance dashboard widget, see vibes/api.py.
+    path("api/hot/<str:kind>/", api.hot, name="api_hot"),
+    path("api/stats/", api.stats, name="api_stats"),
     path("post/<int:pk>/", views.post_detail, name="post_detail"),
     path("post/<int:post_pk>/recs/add/", views.rec_add, name="rec_add"),
     path("post/<int:post_pk>/recs/bulk/", views.rec_bulk, name="rec_bulk"),

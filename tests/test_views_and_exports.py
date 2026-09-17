@@ -29,6 +29,39 @@ def test_unknown_section_404(client, db):
     assert client.get("/nope/").status_code == 404
 
 
+def test_api_hot_only_lists_posts_with_a_cached_image(client, post):
+    """The Glance widget needs a real, reliably-loadable image -- Post.primary_image
+    falls back to the raw Reddit CDN URL when nothing's cached, which is fine for the
+    app's own grid but not something an external viewer's browser is guaranteed to
+    load, so the API is stricter than the grid here."""
+    from vibes.models import PostImage
+
+    assert client.get(reverse("vibes:api_hot", args=["nonsense"])).status_code == 404
+    assert client.get(reverse("vibes:api_hot", args=["movies"])).json() == []  # this fixture's post is music
+    assert client.get(reverse("vibes:api_hot", args=["music"])).json() == []  # no cached image yet
+
+    PostImage.objects.create(post=post, order=0, source_url="https://example.test/x.jpg")  # uncached
+    assert client.get(reverse("vibes:api_hot", args=["music"])).json() == []
+
+    cached = PostImage.objects.create(post=post, order=1, source_url="https://example.test/y.jpg")
+    cached.file.save("y.jpg", ContentFile(b"fake"), save=True)
+    try:
+        data = client.get(reverse("vibes:api_hot", args=["music"]) + "?limit=5").json()
+        assert len(data) == 1
+        item = data[0]
+        assert item["id"] == post.pk and item["rec_count"] == 1  # one included rec in the fixture
+        assert item["image"].endswith(cached.file.url)
+        assert item["url"].endswith(post.get_absolute_url())
+    finally:
+        with contextlib.suppress(OSError):
+            cached.file.delete(save=False)
+
+
+def test_api_stats(client, post):
+    data = client.get(reverse("vibes:api_stats")).json()
+    assert data == {"movies": 0, "music": 1, "recommendations": 1, "last_synced": None}
+
+
 def test_htmx_toggle_and_edit(client, post):
     rec = post.recommendations.get(parsed_title="Fade Into You")
     r = client.post(reverse("vibes:rec_toggle", args=[rec.pk]), HTTP_HX_REQUEST="true")

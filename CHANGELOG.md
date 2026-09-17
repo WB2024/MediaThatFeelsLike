@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Glance dashboard widget**: a small JSON API (`vibes/api.py` -- `/api/hot/<kind>/`,
+  `/api/stats/`) backs a proper image-strip widget on the homelab dashboard (hottest
+  posts per section, plus a stats tile) instead of a bare status tile.
 - **Per-recommendation actions**: an "⊕" dropdown on every recommendation row adds just
   that one item to Radarr/Lidarr/slskd/Jellyfin/Navidrome, independent of the row's
   include/exclude checkbox and the bulk buttons. Radarr/Lidarr/slskd reuse the exact

@@ -261,6 +261,22 @@ computation the bulk buttons and every htmx rec-list partial share (added specif
 so the per-row dropdown keeps working after any toggle/edit/reparse/etc. swap, not just
 on the initial page load).
 
+## Glance dashboard widget
+
+`vibes/api.py` is a small, deliberately unstable JSON API (no versioning, no auth beyond
+"LAN-only, no login" like the rest of the app) whose only real consumer is a Glance
+`custom-api` widget: `GET /api/hot/<movies|music>/?limit=N` (the N hottest posts with a
+locally cached image, for an image-strip widget) and `GET /api/stats/` (post/rec counts
++ last sync, for a stats tile). Kept separate from `vibes/views.py` because it's a
+different kind of surface (JSON contract for an external renderer, not HTML for this
+app's own pages), even though it reuses the same `_hot_key` ranking as the tile grid so
+the widget and the grid agree on what's "hot".
+
+`hot()` deliberately doesn't use `Post.primary_image` (which falls back to the raw
+Reddit CDN URL when nothing's cached locally yet) -- an image that's fine to eventually
+appear in this app's own grid isn't guaranteed to load reliably for an external viewer
+right now, so the API only returns posts with an actually-cached file.
+
 ## App layout
 
 ```
