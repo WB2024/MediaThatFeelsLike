@@ -120,6 +120,36 @@ def test_jellyfin_resolve_and_playlist():
     assert c.resolve(rec("", artist="Radiohead"), "music")[1] == "skipped"
 
 
+def test_jellyfin_add_or_create_playlist():
+    c = JellyfinClient(cfg("jellyfin", user_id="uid"))
+
+    def items(kwargs):
+        params = kwargs["params"]
+        if params.get("IncludeItemTypes") == "Playlist":
+            match = params.get("searchTerm", "").casefold() == "existing"
+            return {"Items": [{"Id": "pl-existing", "Name": "Existing"}] if match else []}
+        return {"Items": []}
+
+    calls = stub(c, {
+        ("GET", "/Items"): items,
+        ("POST", "/Playlists/pl-existing/Items"): None,
+        ("POST", "/Playlists"): {"Id": "pl-new"},
+    })
+    pid, created = c.add_or_create_playlist("Existing", ["i1"], "Audio")
+    assert pid == "pl-existing" and created is False
+    add_call = [k for m, p, k in calls if p == "/Playlists/pl-existing/Items"][0]
+    assert add_call["params"] == {"ids": "i1", "userId": "uid"}
+
+    pid2, created2 = c.add_or_create_playlist("New One", ["i2"], "Audio")
+    assert pid2 == "pl-new" and created2 is True
+
+
+def test_jellyfin_find_playlist_requires_exact_name():
+    c = JellyfinClient(cfg("jellyfin", user_id="uid"))
+    stub(c, {("GET", "/Items"): {"Items": [{"Id": "pl1", "Name": "MTFL Picks 2"}]}})
+    assert c.find_playlist("MTFL Picks") is None  # substring match must not count
+
+
 def test_navidrome_auth_and_search():
     c = NavidromeClient(cfg("navidrome"))
     seen = {}
@@ -140,6 +170,19 @@ def test_navidrome_error_surfaces():
     stub(c, {("GET", "/rest/ping"): {"subsonic-response": {"status": "failed", "error": {"code": 40, "message": "Wrong username or password"}}}})
     with pytest.raises(ServiceError, match="Wrong username"):
         c.test()
+
+
+def test_navidrome_add_or_create_playlist():
+    c = NavidromeClient(cfg("navidrome"))
+    stub(c, {
+        ("GET", "/rest/getPlaylists"): {"subsonic-response": {"status": "ok", "playlists": {"playlist": [{"id": "p-existing", "name": "Existing"}]}}},
+        ("GET", "/rest/updatePlaylist"): {"subsonic-response": {"status": "ok"}},
+        ("GET", "/rest/createPlaylist"): {"subsonic-response": {"status": "ok", "playlist": {"id": "p-new"}}},
+    })
+    pid, created = c.add_or_create_playlist("Existing", ["s1"])
+    assert pid == "p-existing" and created is False
+    pid2, created2 = c.add_or_create_playlist("brand new name", ["s2"])
+    assert pid2 == "p-new" and created2 is True  # no case-insensitive collision with "Existing"
 
 
 # -- slskd --------------------------------------------------------------------------------
@@ -343,3 +386,124 @@ def test_slskd_batch_size_shrinks_as_search_timeout_grows():
     assert _slskd_batch_size(25) * 25 <= 100
     assert _slskd_batch_size(25) < SLSKD_MAX_PER_PUSH
     assert _slskd_batch_size(1000) == 1  # never zero, however extreme the timeout
+
+
+# -- push_one: per-recommendation actions --------------------------------------------------
+
+
+def _music_rec(db, **overrides):
+    from vibes.models import Post, Recommendation, Source
+
+    src = Source.objects.create(subreddit="SongsThatFeelLikeThis", kind=Source.Kind.MUSIC)
+    from django.utils import timezone
+
+    post = Post.objects.create(source=src, reddit_id=overrides.pop("reddit_id", "p1"), title="t", permalink="/x/", created_utc=timezone.now())
+    defaults = {"post": post, "parsed_artist": "MIKA", "parsed_title": "Love Today", "method": "artist_title", "confidence": 0.9, "included": True, "order": 0}
+    defaults.update(overrides)
+    return Recommendation.objects.create(**defaults)
+
+
+def test_push_one_playlist_adds_to_existing_playlist(db):
+    from integrations.push import _push_one_playlist
+
+    rec_obj = _music_rec(db)
+
+    class FakeNavidromeClient:
+        config = cfg("navidrome")
+
+        def resolve(self, r, kind):
+            return {"id": "song1"}, "matched", "MIKA - Love Today"
+
+        def add_or_create_playlist(self, name, ids):
+            assert ids == ["song1"]
+            return ("existing-id", False) if name == "My Playlist" else ("new-id", True)
+
+    outcome = _push_one_playlist(FakeNavidromeClient(), "navidrome", rec_obj, "My Playlist")
+    assert outcome["error"] is None
+    assert "Added to playlist" in outcome["summary"] and "My Playlist" in outcome["summary"]
+    rec_obj.refresh_from_db()
+    assert rec_obj.integration_state["navidrome"]["status"] == "playlisted"
+
+
+def test_push_one_playlist_creates_when_no_default_name_given(db):
+    from integrations.push import DEFAULT_PLAYLIST_NAME, _push_one_playlist
+
+    rec_obj = _music_rec(db)
+
+    class FakeClient:
+        config = cfg("navidrome")
+
+        def resolve(self, r, kind):
+            return {"id": "song1"}, "matched", "MIKA - Love Today"
+
+        def add_or_create_playlist(self, name, ids):
+            assert name == DEFAULT_PLAYLIST_NAME  # blank prompt -> falls back to the default
+            return "new-id", True
+
+    outcome = _push_one_playlist(FakeClient(), "navidrome", rec_obj, "")
+    assert "Created playlist" in outcome["summary"] and DEFAULT_PLAYLIST_NAME in outcome["summary"]
+
+
+def test_push_one_playlist_not_found_records_chip_without_creating_anything(db):
+    from integrations.push import _push_one_playlist
+
+    rec_obj = _music_rec(db)
+
+    class FakeClient:
+        config = cfg("navidrome")
+        create_called = False
+
+        def resolve(self, r, kind):
+            return None, "not_found", "no match"
+
+        def add_or_create_playlist(self, *a, **k):
+            raise AssertionError("must not be called when nothing resolved")
+
+    outcome = _push_one_playlist(FakeClient(), "navidrome", rec_obj, "My Playlist")
+    assert outcome["results"][0]["status"] == "not_found"
+    rec_obj.refresh_from_db()
+    assert rec_obj.integration_state["navidrome"]["status"] == "not_found"
+
+
+def test_push_one_dispatches_lidarr_and_slskd_as_single_item_batches(db, monkeypatch):
+    from integrations import push as push_module
+
+    rec_obj = _music_rec(db)
+
+    class FakeLidarr:
+        config = cfg("lidarr")
+
+        def push(self, r):
+            return "added", "added ok"
+
+    monkeypatch.setattr(push_module, "client_for", lambda service: FakeLidarr())
+    outcome = push_module.push_one(rec_obj, "lidarr")
+    assert outcome["results"][0]["status"] == "added"
+    rec_obj.refresh_from_db()
+    assert rec_obj.integration_state["lidarr"]["status"] == "added"
+
+    class FakeSlskd:
+        config = cfg("slskd")
+
+        def push(self, r, options=None):
+            return "queued", "queued ok"
+
+    monkeypatch.setattr(push_module, "client_for", lambda service: FakeSlskd())
+    outcome = push_module.push_one(rec_obj, "slskd")
+    assert outcome["results"][0]["status"] == "queued"
+    rec_obj.refresh_from_db()
+    assert rec_obj.integration_state["slskd"]["status"] == "queued"
+
+
+def test_push_one_records_an_error_chip_when_service_not_configured(db):
+    from integrations.models import ServiceConfig
+    from integrations.push import push_one
+
+    ServiceConfig.objects.create(service="radarr", enabled=False)  # deliberately unconfigured
+    rec_obj = _music_rec(db, reddit_id="p2")  # the fixture's kind is irrelevant to this failure path
+    outcome = push_one(rec_obj, "radarr")
+    assert outcome["error"] is None  # doesn't blow up the request
+    assert outcome["results"][0]["status"] == "error"
+    rec_obj.refresh_from_db()
+    assert rec_obj.integration_state["radarr"]["status"] == "error"
+    assert "not configured" in rec_obj.integration_state["radarr"]["detail"]

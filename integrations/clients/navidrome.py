@@ -56,6 +56,22 @@ class NavidromeClient(BaseClient):
         resp = self.call("createPlaylist", name=name, songId=list(song_ids))
         return (resp.get("playlist") or {}).get("id")
 
+    def find_playlist(self, name):
+        """Exact (case-insensitive) name match, or None."""
+        playlists = self.call("getPlaylists").get("playlists", {}).get("playlist") or []
+        return next((p for p in playlists if p.get("name", "").casefold() == name.casefold()), None)
+
+    def add_to_playlist(self, playlist_id, song_ids):
+        self.call("updatePlaylist", playlistId=playlist_id, songIdToAdd=list(song_ids))
+
+    def add_or_create_playlist(self, name, song_ids):
+        """Add to the existing playlist of this name, or create it. Returns (playlist_id, created)."""
+        existing = self.find_playlist(name)
+        if existing:
+            self.add_to_playlist(existing["id"], song_ids)
+            return existing["id"], False
+        return self.create_playlist(name, song_ids), True
+
     def resolve(self, rec, kind="music"):
         if rec.parsed_artist and not rec.parsed_title:
             return None, "skipped", "artist-only recommendation; playlists need a track"

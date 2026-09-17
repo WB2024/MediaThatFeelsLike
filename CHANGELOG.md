@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Per-recommendation actions**: an "⊕" dropdown on every recommendation row adds just
+  that one item to Radarr/Lidarr/slskd/Jellyfin/Navidrome, independent of the row's
+  include/exclude checkbox and the bulk buttons. Radarr/Lidarr/slskd reuse the exact
+  per-item logic the bulk buttons already use; Jellyfin/Navidrome add to an *existing*
+  playlist of the given name (creating it only if needed) instead of always starting a
+  fresh one, so picking tracks one at a time builds a single running collection.
+  `find_playlist`/`add_to_playlist` verified live against both services. None of this
+  uses Radarr/Lidarr's "Import List" feature -- see docs/ARCHITECTURE.md → "Integrations"
+  for why that's the wrong shape here. 12 new tests.
 - **slskd integration**: a "Grab via slskd" button on music vibe pages searches
   Soulseek, ranks results (title match, format/bitrate, weighted toward free upload
   slots and short queues over marginal quality), and queues the best file for

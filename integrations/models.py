@@ -78,3 +78,21 @@ class ServiceConfig(models.Model):
     def configured(cls):
         """{service: config} for every service that's usable right now."""
         return {c.service: c for c in cls.all_services() if c.is_configured}
+
+
+def service_flags(kind, services=None):
+    """The can_radarr/can_lidarr/... flags a template needs to decide which push
+    buttons to show for a post or recommendation of this kind. Shared between the vibe
+    detail page (bulk buttons) and the per-recommendation row (the "add to..." dropdown)
+    so the two can never drift apart -- and so a row template never has to walk
+    rec.post.source.kind itself, which would be an extra query per row.
+    """
+    services = services if services is not None else ServiceConfig.configured()
+    return {
+        "services": services,
+        "can_radarr": kind == "movies" and ServiceConfig.Service.RADARR in services,
+        "can_lidarr": kind == "music" and ServiceConfig.Service.LIDARR in services,
+        "can_jellyfin": ServiceConfig.Service.JELLYFIN in services,
+        "can_navidrome": kind == "music" and ServiceConfig.Service.NAVIDROME in services,
+        "can_slskd": kind == "music" and ServiceConfig.Service.SLSKD in services,
+    }

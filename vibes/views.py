@@ -80,20 +80,10 @@ def _hot_key(post):
 
 def post_detail(request, pk):
     post = get_object_or_404(Post.objects.select_related("source").prefetch_related("images"), pk=pk)
-    from integrations.models import ServiceConfig  # local import: avoid app-load cycles
-
-    services = ServiceConfig.configured()
-    kind = post.source.kind
     context = {
         "post": post,
-        "kind": kind,
+        "kind": post.source.kind,
         "images": list(post.images.all()),
-        "services": services,
-        "can_radarr": kind == "movies" and "radarr" in services,
-        "can_lidarr": kind == "music" and "lidarr" in services,
-        "can_jellyfin": "jellyfin" in services,
-        "can_navidrome": kind == "music" and "navidrome" in services,
-        "can_slskd": kind == "music" and "slskd" in services,
         "cooldown": SyncRun.cooldown_until(),
         **_rec_context(post),
     }
@@ -101,6 +91,11 @@ def post_detail(request, pk):
 
 
 def _rec_context(post):
+    """Shared by post_detail and every htmx rec-list partial -- the per-row "add to..."
+    dropdown needs `services`/`can_*` just as much as the bulk buttons at the top do, so
+    this always computes them rather than only the page-load view bothering to."""
+    from integrations.models import service_flags  # local import: avoid app-load cycles
+
     recs = list(post.recommendations.order_by("order", "-confidence"))
     return {
         "post": post,
@@ -108,6 +103,7 @@ def _rec_context(post):
         "included": [r for r in recs if r.included],
         "excluded": [r for r in recs if not r.included],
         "included_count": sum(1 for r in recs if r.included),
+        **service_flags(post.source.kind),
     }
 
 

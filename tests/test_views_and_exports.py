@@ -85,6 +85,46 @@ def test_media_files_served_even_with_debug_false(client, post, settings):
             image.thumb.delete(save=False)
 
 
+def test_rec_row_add_dropdown_matches_configured_services(client, post):
+    """Explicit rows here rather than relying on whatever .env this machine happens to
+    have -- the dev box's real .env auto-configures some services, which would make this
+    test's outcome depend on where it runs."""
+    from integrations.models import ServiceConfig
+
+    ServiceConfig.objects.create(service="lidarr", enabled=False)
+    r = client.get(post.get_absolute_url())
+    assert b"Grab via slskd" not in r.content and b"Add to Lidarr" not in r.content
+    # The request above auto-creates (unconfigured) rows for every other service via
+    # ServiceConfig.all_services() -- update rather than create for the next step.
+    ServiceConfig.objects.update_or_create(service="slskd", defaults={"enabled": True, "url": "http://slskd.test", "api_key": "k"})
+    r = client.get(post.get_absolute_url())
+    assert b"Grab via slskd" in r.content
+    assert b"Add to Radarr" not in r.content  # movies-only button, this is a music post
+
+
+def test_push_rec_updates_only_that_recommendations_chip(client, post, monkeypatch):
+    from integrations import push as push_module
+    from integrations.models import ServiceConfig
+
+    ServiceConfig.objects.create(service="slskd", enabled=True, url="http://slskd.test", api_key="k")
+    rec = post.recommendations.get(parsed_title="Fade Into You")
+    other = post.recommendations.get(parsed_title="in all seriousness")
+
+    class FakeSlskd:
+        config = ServiceConfig.get("slskd")
+
+        def push(self, r, options=None):
+            return "queued", f"queued {r.parsed_title}"
+
+    monkeypatch.setattr(push_module, "client_for", lambda service: FakeSlskd())
+    r = client.post(reverse("integrations:push_rec", args=[rec.pk, "slskd"]), HTTP_HX_REQUEST="true")
+    assert r.status_code == 200 and b"slskd: queued" in r.content
+    rec.refresh_from_db()
+    other.refresh_from_db()
+    assert rec.integration_state["slskd"]["status"] == "queued"
+    assert other.integration_state == {}  # the other row on the same post is untouched
+
+
 def test_settings_page_and_encrypted_save(client, db, settings):
     from integrations.models import ServiceConfig
 

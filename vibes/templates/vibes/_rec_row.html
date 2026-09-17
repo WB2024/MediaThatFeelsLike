@@ -19,6 +19,18 @@
     {% endif %}
   </div>
   <div class="ops">
+    {% if can_radarr or can_lidarr or can_jellyfin or can_navidrome or can_slskd %}
+    <details class="dropdown">
+      <summary class="btn small ghost" title="Add just this one">⊕</summary>
+      <div class="menu">
+        {% if can_radarr %}<button hx-post="{% url 'integrations:push_rec' rec.pk 'radarr' %}" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML">Add to Radarr</button>{% endif %}
+        {% if can_lidarr %}<button hx-post="{% url 'integrations:push_rec' rec.pk 'lidarr' %}" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML">Add to Lidarr</button>{% endif %}
+        {% if can_slskd %}<button hx-post="{% url 'integrations:push_rec' rec.pk 'slskd' %}" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML">Grab via slskd</button>{% endif %}
+        {% if can_jellyfin %}<button hx-post="{% url 'integrations:push_rec' rec.pk 'jellyfin' %}" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML" hx-prompt="Jellyfin playlist name (an existing one is added to, not replaced)">Add to Jellyfin playlist</button>{% endif %}
+        {% if can_navidrome %}<button hx-post="{% url 'integrations:push_rec' rec.pk 'navidrome' %}" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML" hx-prompt="Navidrome playlist name (an existing one is added to, not replaced)">Add to Navidrome playlist</button>{% endif %}
+      </div>
+    </details>
+    {% endif %}
     <button class="btn small ghost" hx-get="{% url 'vibes:rec_edit' rec.pk %}" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML" title="Edit">✎</button>
     <button class="btn small ghost danger" hx-post="{% url 'vibes:rec_delete' rec.pk %}" hx-confirm="Delete this recommendation?" title="Delete">✕</button>
   </div>

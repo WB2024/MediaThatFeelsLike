@@ -10,4 +10,5 @@ urlpatterns = [
     path("settings/<str:service>/", views.save_service, name="save_service"),
     path("settings/<str:service>/test/", views.test_service, name="test_service"),
     path("push/<int:post_pk>/<str:service>/", views.push, name="push"),
+    path("push-rec/<int:rec_pk>/<str:service>/", views.push_rec, name="push_rec"),
 ]

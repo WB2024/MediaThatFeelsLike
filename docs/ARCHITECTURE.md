@@ -182,8 +182,18 @@ score) so a human can sanity-check it in one click without leaving the page.
 
 ## Integrations
 
-All four are opt-in per vibe detail page (nothing is pushed anywhere without an explicit
-action), and all read their connection details from `ServiceConfig`.
+All five are opt-in per vibe detail page or per recommendation (nothing is pushed
+anywhere without an explicit action), and all read their connection details from
+`ServiceConfig`.
+
+**Not import lists.** Radarr/Lidarr both support "Import Lists" -- a mechanism where
+Radarr/Lidarr itself polls an external URL on a schedule and auto-imports whatever's on
+it (a Trakt watchlist, an IMDb list). That's the wrong shape for this app: the whole
+point is curating *specific* recommendations out of a specific vibe post, not
+continuously following a blanket external list. Instead, every add is a direct,
+explicit API call (`lookup` → `POST`) triggered by a button press, exactly like every
+other integration here -- see "Per-recommendation actions" below for the individual
+(as opposed to whole-post) version of that click.
 
 - **Radarr / Lidarr** — for each included recommendation: `GET /api/v3/movie/lookup` (Radarr)
   or `GET /api/v1/artist/lookup` (Lidarr) by search term, then `POST` to add if not
@@ -224,6 +234,32 @@ Every integration action returns a per-item result (added / already existed / no
 error) rather than a single pass/fail for the whole batch — with a curated list of maybe
 10-30 items, "3 of 12 didn't match, here's which ones" is far more useful than a silent
 partial success.
+
+### Per-recommendation actions
+
+Every row also carries an "add just this one" dropdown (`integrations/push.py`'s
+`push_one`), independent of the bulk buttons and of the row's own included/excluded
+checkbox -- a direct click is its own instruction, not gated by whether the row happens
+to be ticked for bulk export. Radarr/Lidarr/slskd reuse the exact same per-item client
+methods the bulk path uses (`_push_arr` / `_push_slskd` called with a one-item list --
+slskd's dynamic batch-size cap naturally floors at 1, so no special-casing was needed).
+
+Jellyfin/Navidrome are different: the *bulk* button always creates a fresh playlist
+(the whole point is "make a playlist from this vibe post"), but a *per-track* click
+needs the opposite default -- add to a playlist you keep reusing, not spin up a new
+single-song playlist every time. `add_or_create_playlist(name, ids)` looks up an
+existing playlist by exact (case-insensitive) name via `find_playlist` and adds to it
+(`POST /Playlists/{id}/Items` / Subsonic `updatePlaylist`) if found, otherwise creates
+one -- both verified live. Leaving the name prompt blank falls back to
+`DEFAULT_PLAYLIST_NAME` ("MediaThatFeelsLike Picks"), so accepting the default on every
+click naturally builds one running collection.
+
+The only feedback for a per-row action is that row's own updated chips (no separate
+results banner) -- `push_rec` re-renders and returns just the `<li>` for that
+recommendation, via `integrations.models.service_flags(kind)`, the same capability
+computation the bulk buttons and every htmx rec-list partial share (added specifically
+so the per-row dropdown keeps working after any toggle/edit/reparse/etc. swap, not just
+on the initial page load).
 
 ## App layout
 

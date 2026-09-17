@@ -112,6 +112,20 @@ Subreddits are managed on the Settings page too (add more sources to either sect
 
 ## Notes on the integrations
 
+Every button — the bulk ones at the top of a vibe page and the "⊕" dropdown on each
+individual recommendation row — is a direct, explicit API call triggered by that click.
+None of this uses Radarr/Lidarr's own "Import List" feature (where Radarr/Lidarr itself
+polls an external URL and auto-imports whatever's there): the point here is picking
+specific recommendations out of a specific post, not following a blanket list.
+
+The per-recommendation dropdown works independently of the row's include/exclude
+checkbox (an explicit click is its own instruction) and independently of the bulk
+buttons: for Radarr/Lidarr/slskd it's the same per-item action the bulk button already
+does one at a time; for Jellyfin/Navidrome it adds to an *existing* playlist of the name
+you give (creating it only if there isn't one yet) rather than always starting a new
+one, so picking tracks one at a time naturally builds a single running collection —
+leave the name prompt blank and it defaults to "MediaThatFeelsLike Picks".
+
 - **Radarr**: lookup by title (+year when known), add monitored with the chosen root
   folder / quality profile, search immediately (toggle). Already-present films are
   reported, not duplicated.

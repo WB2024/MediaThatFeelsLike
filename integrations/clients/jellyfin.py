@@ -81,6 +81,23 @@ class JellyfinClient(BaseClient):
         result = self.post("/Playlists", json=payload)
         return (result or {}).get("Id")
 
+    def find_playlist(self, name):
+        """Exact (case-insensitive) name match, or None. `searchTerm` is a substring
+        match on Jellyfin's side, so the exact check still has to happen here."""
+        items = self._items(searchTerm=name, IncludeItemTypes="Playlist")
+        return next((i for i in items if i.get("Name", "").casefold() == name.casefold()), None)
+
+    def add_to_playlist(self, playlist_id, item_ids):
+        self._request("POST", f"/Playlists/{playlist_id}/Items", params={"ids": ",".join(item_ids), "userId": self.user_id})
+
+    def add_or_create_playlist(self, name, item_ids, media_type):
+        """Add to the existing playlist of this name, or create it. Returns (playlist_id, created)."""
+        existing = self.find_playlist(name)
+        if existing:
+            self.add_to_playlist(existing["Id"], item_ids)
+            return existing["Id"], False
+        return self.create_playlist(name, item_ids, media_type), True
+
     def resolve(self, rec, kind):
         """(item, status, detail) for one recommendation."""
         if kind == "movies":

@@ -18,6 +18,7 @@ CLIENTS = {
     ServiceConfig.Service.SLSKD: SlskdClient,
 }
 OK_STATUSES = {"added", "exists", "playlisted", "artist_only", "queued"}
+DEFAULT_PLAYLIST_NAME = "MediaThatFeelsLike Picks"
 # A slskd search+download can take up to ~max_wait seconds each; this is a synchronous
 # htmx request behind gunicorn's --timeout (120s), so a single push budgets this many
 # seconds total and processes only as many recommendations as fit -- the rest stay for a
@@ -62,6 +63,55 @@ def push_post(post, service, playlist_name=None):
     if service == ServiceConfig.Service.SLSKD:
         return _push_slskd(client, recs)
     return _push_playlist(client, service, post, recs, playlist_name)
+
+
+def push_one(rec, service, playlist_name=None):
+    """Push a single recommendation, independent of its included/excluded state -- a
+    direct per-row click is its own instruction, not gated by the bulk-export checkbox.
+    Same result shape as push_post: {"results": [...], "summary": str, "error": str|None}."""
+    try:
+        client = client_for(service)
+    except ServiceError as exc:
+        # Record it as a chip on the row too, so the only feedback mechanism for a
+        # per-row action (its own updated chips) still surfaces the problem.
+        result = _record(rec, service, "error", str(exc))
+        return {"results": [result], "summary": str(exc), "error": None}
+
+    if service in (ServiceConfig.Service.RADARR, ServiceConfig.Service.LIDARR):
+        return _push_arr(client, service, [rec])
+    if service == ServiceConfig.Service.SLSKD:
+        return _push_slskd(client, [rec])
+    return _push_one_playlist(client, service, rec, playlist_name)
+
+
+def _push_one_playlist(client, service, rec, playlist_name):
+    """Jellyfin/Navidrome, one item: add to the existing playlist of this name if there
+    is one, otherwise create it -- unlike the bulk button, which always makes a fresh
+    playlist. That's the point of the per-item action: pick tracks/movies one at a time
+    into a running collection instead of starting a new single-item playlist every time."""
+    kind = rec.post.source.kind
+    try:
+        item, status, detail = client.resolve(rec, kind)
+    except ServiceError as exc:
+        item, status, detail = None, "error", str(exc)
+    if item is None:
+        result = _record(rec, service, status, detail)
+        return {"results": [result], "summary": detail, "error": None}
+
+    name = (playlist_name or DEFAULT_PLAYLIST_NAME).strip()[:100] or DEFAULT_PLAYLIST_NAME
+    try:
+        if service == ServiceConfig.Service.JELLYFIN:
+            playlist_id, created = client.add_or_create_playlist(name, [item["Id"]], "Video" if kind == "movies" else "Audio")
+        else:
+            playlist_id, created = client.add_or_create_playlist(name, [item["id"]])
+    except ServiceError as exc:
+        result = _record(rec, service, "error", str(exc))
+        return {"results": [result], "summary": str(exc), "error": None}
+
+    verb = "Created" if created else "Added to"
+    full_detail = f"{verb} playlist “{name}” ({playlist_id}): {detail}"
+    result = _record(rec, service, "playlisted", full_detail)
+    return {"results": [result], "summary": full_detail, "error": None}
 
 
 def _push_slskd(client, recs):

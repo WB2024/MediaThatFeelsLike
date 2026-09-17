@@ -1,16 +1,17 @@
 from django import forms
 from django.contrib import messages
 from django.forms import modelformset_factory
+from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from reddit_sync.models import SyncRun
-from vibes.models import Post, Source
+from vibes.models import Post, Recommendation, Source
 
 from .clients.base import ServiceError
-from .models import ServiceConfig
-from .push import CLIENTS, push_post
+from .models import ServiceConfig, service_flags
+from .push import CLIENTS, push_one, push_post
 
 SourceFormSet = modelformset_factory(
     Source, fields=("subreddit", "kind", "listing", "time_filter", "fetch_limit", "enabled"), extra=1, can_delete=True,
@@ -129,3 +130,17 @@ def push(request, post_pk, service):
 
     outcome.update(_rec_context(post))
     return render(request, "integrations/_push_results.html", outcome)
+
+
+@require_POST
+def push_rec(request, rec_pk, service):
+    """htmx: push ONE recommendation to a service, regardless of its included state --
+    a per-row click is its own instruction. Re-renders just that row so its chips
+    (the only feedback for this action) reflect the outcome."""
+    rec = get_object_or_404(Recommendation.objects.select_related("post__source"), pk=rec_pk)
+    if service not in ServiceConfig.Service.values:
+        return HttpResponseBadRequest("unknown service")
+    name = request.headers.get("HX-Prompt") or None
+    push_one(rec, service, playlist_name=name)
+    rec.refresh_from_db()
+    return render(request, "vibes/_rec_row.html", {"rec": rec, **service_flags(rec.post.source.kind)})
