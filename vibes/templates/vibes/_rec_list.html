@@ -1,0 +1,32 @@
+<div id="rec-list" hx-target="#rec-list" hx-swap="outerHTML"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if oob_count %}<span id="rec-count" hx-swap-oob="true" class="count">{{ included_count }} of {{ recs|length }} included</span>{% endif %}
+  <div class="panel-body" style="display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+    <button class="btn small ghost" hx-post="{% url 'vibes:rec_bulk' post.pk %}" hx-vals='{"action":"include_all"}'>Include all</button>
+    <button class="btn small ghost" hx-post="{% url 'vibes:rec_bulk' post.pk %}" hx-vals='{"action":"exclude_all"}'>Exclude all</button>
+    <button class="btn small ghost" hx-post="{% url 'vibes:rec_bulk' post.pk %}" hx-vals='{"action":"reset"}' title="Back to the parser's own include/exclude decisions">Reset</button>
+  </div>
+
+  <ul class="recs">
+    {% for rec in included %}{% include "vibes/_rec_row.html" %}{% empty %}
+      <li class="empty" style="padding:24px">
+        {% if recs %}Nothing included -- tick some below.{% elif post.comments_fetched_at %}The parser found nothing usable in {{ post.comments|length }} comment{{ post.comments|length|pluralize }}. Add titles by hand below.{% else %}Comments haven't been fetched yet -- press <b>Refresh</b>.{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% if excluded %}
+  <details class="low-section" {% if not included %}open{% endif %}>
+    <summary>{{ excluded|length }} excluded / low-confidence candidate{{ excluded|length|pluralize }}</summary>
+    <ul class="recs" style="padding:0 14px 6px">
+      {% for rec in excluded %}{% include "vibes/_rec_row.html" %}{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  <form class="add-form" hx-post="{% url 'vibes:rec_add' post.pk %}">
+    {% if post.source.is_music %}<input type="text" name="artist" placeholder="Artist" style="flex:0 0 32%">{% endif %}
+    <input type="text" name="title" placeholder="{% if post.source.is_music %}Track title{% else %}Film title{% endif %}" required>
+    {% if not post.source.is_music %}<input type="number" name="year" placeholder="Year" style="width:80px" min="1888" max="2030">{% endif %}
+    <button class="btn small" type="submit">Add</button>
+  </form>
+</div>

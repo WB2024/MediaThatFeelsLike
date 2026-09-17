@@ -14,20 +14,17 @@ Radarr/Lidarr (add + search) or Jellyfin/Navidrome (create playlist).
 
 - **Django**, not Flask — the admin panel and ORM/migrations earn their keep given the
   relational data and four integrations.
-- **Unauthenticated fetch from old.reddit.com is the primary Reddit access path — not
-  PRAW/OAuth.** This reverses the original plan: Reddit closed self-service developer
-  app registration in November 2025 ("Responsible Builder Policy"), and new personal-use
-  app registrations are now rejected in practice (confirmed directly against this
-  project's own registration attempt). Keep `REDDIT_CLIENT_ID`/`SECRET` wired up as an
-  optional preferred path in case an app registration is ever approved, but never make
-  the sync command depend on it. See `docs/ARCHITECTURE.md` → "Reddit access" for the
-  full reasoning, the evidence it's currently working, and the request-pacing rules
-  (realistic browser User-Agent, one request per post via `/comments/<id>/.json`,
-  aggressive caching, multi-second gaps, back off rather than retry on failure). Do not
-  relitigate this without re-reading that section first.
-- **Cron-driven sync command**, not Celery/Redis. Matches every other automation already
-  running in this homelab (see the sibling `lidarr-drip-search.py` / queue-janitor style
-  scripts on the services LXC) — a single-user tool doesn't need a task queue.
+- **The Arctic Shift archive API is the default Reddit backend** (`REDDIT_BACKEND=auto`
+  → archive). Not PRAW (registration closed since Nov 2025) and not unauthenticated
+  reddit.com JSON (works until the IP trips Reddit's logged-out rate limit, then every
+  JSON endpoint is blocked for hours -- measured on 2026-09-17). Both remain selectable
+  backends behind the same `listing` / `post_with_comments` interface in
+  `reddit_sync/client.py`. `docs/ARCHITECTURE.md` → "Reddit access" has the full
+  evidence trail; read it before proposing a change here.
+- **A periodic management command** (`sync_reddit`), run by the compose `sync` sidecar
+  loop (or cron on a bare host) -- not Celery/Redis. Matches every other automation in
+  this homelab; a single-user tool doesn't need a task queue. The comment-thread cap per
+  run (`--max-comments`) is what keeps a cold start from becoming a burst.
 - **Recommendation parsing is a heuristic candidate-generator, not a guarantee.** The
   curation step on the vibe detail page (tick/edit/discard) is load-bearing UX, not a
   stopgap — don't try to make the parser perfect instead of making curation good.
@@ -53,7 +50,20 @@ Radarr/Lidarr (add + search) or Jellyfin/Navidrome (create playlist).
 
 ## Current state
 
-Repo scaffolding only (README, LICENSE, .gitignore, .gitattributes, .editorconfig,
-requirements files, `.env.example`, this file, and `docs/ARCHITECTURE.md`). The actual
-Django project (`manage.py`, settings, the four apps described in the architecture doc)
-has not been created yet — that's the next piece of work.
+Working application: sync (archive backend, tested live), tile grids, detail page with
+htmx curation, CSV/TXT/M3U exports, Radarr/Lidarr adds and Jellyfin/Navidrome playlists
+(all four tested against the real services on the LAN), Settings page, Docker/compose
+packaging. `pytest` covers the parser, the sync pipeline (fake client), the views/exports
+and the integration clients (stubbed HTTP). Not yet deployed to the LXC.
+
+## Conventions
+
+- Windows dev box: use `.venv\Scripts\python.exe`, set `PYTHONIOENCODING=utf-8` before
+  running management commands that print (the sync log has arrows), and keep Bash
+  heredocs under ~8 KB (longer commands get truncated by the shell on Windows -- write a
+  file instead).
+- `ruff check .` must be clean (config in `pyproject.toml`); `pytest -q` must pass.
+- Don't run pushes (Radarr/Lidarr adds, playlist creation) against the real services in
+  tests -- stub `_request`. When verifying by hand, add with search disabled and delete
+  afterwards; the Lidarr artist-monitoring quirk is documented in
+  `integrations/clients/lidarr.py`.

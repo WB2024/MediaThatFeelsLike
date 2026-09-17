@@ -12,63 +12,111 @@ Both subreddits work the same way: someone posts an image (or just a feeling) an
 source of curated, vibe-matched discovery — but it's stuck in Reddit's UI, mixed in with
 noise, and impossible to act on directly.
 
-MediaThatFeelsLike pulls posts from both subs and presents them as two sections:
+MediaThatFeelsLike pulls posts from both subs and presents them as two sections,
+**Movies** and **Music**, each a mood-board grid of the post images. Clicking a tile opens
+the **vibe page**: the image(s) at the top, and a cleaned-up list of recommendations
+parsed out of the comments — with the source comment one click away, tick-boxes to curate
+the list, inline editing, and manual additions.
 
-- **Movies** — sourced from r/MoviesThatFeelLike
-- **Music** — sourced from r/SongsThatFeelLikeThis
+From there:
 
-Each section shows a tile grid of post images (à la [Scrolller](https://scrolller.com)-style
-mood boards). Clicking a tile opens a **vibe detail page**: the original image at the top,
-followed by a cleaned-up list of recommendations parsed out of the post's comments.
+- **Export** the list as CSV, plain text, or M3U/M3U8 (with real library paths when
+  Navidrome or Jellyfin knows the item)
+- **Add to Radarr** (movies) or **Lidarr** (music) — looked up, added, monitored and
+  searched, with a per-item result line
+- **Create a playlist** in **Jellyfin** or **Navidrome** from everything the library
+  already has
 
-From there you can:
+Radarr/Lidarr/Jellyfin/Navidrome are configured once on the Settings page; credentials
+are encrypted at rest and never shown again.
 
-- **Export** the list as CSV, TXT, or M3U/M3U8
-- **Send to Radarr** (movies) or **Lidarr** (music) to add and search for them
-- **Build a playlist** directly in **Jellyfin** or **Navidrome**
+## How it gets the data
 
-Radarr/Lidarr API keys and Jellyfin/Navidrome URLs+credentials are configured once in the
-app's settings page.
+Reddit's official API is effectively closed to new personal apps (since Nov 2025), and
+unauthenticated reddit.com JSON gets an IP blocked for hours once it notices you. So the
+sync reads the **Arctic Shift** public Reddit archive by default — full posts including
+galleries, full comment trees with real scores — and downloads images from Reddit's CDN
+into a local cache so the grid never hotlinks. The other two backends (direct reddit.com,
+PRAW) are still there behind `REDDIT_BACKEND`. `docs/ARCHITECTURE.md` has the evidence
+trail and the pacing rules.
+
+Recommendation parsing is heuristic (links, `Artist - Title`, `Title by Artist`,
+`Title (Year)`, quoted titles, list items, short whole comments, title-case runs), each
+candidate carrying a confidence score. Anything at 0.6+ is included by default; the rest
+sits in a collapsed "low confidence" section to promote by hand. Curation is the point,
+not an afterthought — the parser is a candidate generator.
+
+## Running it
+
+### Docker (the services LXC)
+
+```sh
+cp .env.example .env      # fill in DJANGO_SECRET_KEY, CREDENTIAL_ENCRYPTION_KEY,
+                          # DJANGO_ALLOWED_HOSTS and (optionally) the service URLs/keys
+docker compose up -d --build
+```
+
+The app is on port **8095**; the `sync` sidecar runs a sync every 30 minutes
+(`SYNC_INTERVAL`, `SYNC_MAX_COMMENTS` in `compose.yaml`). Data (sqlite + cached images)
+lives in `./data`. Press **Sync now** on the Settings page for the first fill, then let
+the sidecar catch up over a few runs — comment threads are capped per run on purpose.
+
+### Local development (Windows or Linux)
+
+```sh
+python -m venv .venv && .venv\Scripts\activate       # source .venv/bin/activate on Linux
+pip install -r requirements-dev.txt
+cp .env.example .env                                  # fill in as above
+python manage.py migrate && python manage.py bootstrap
+python manage.py sync_reddit --limit 20 --max-comments 12
+python manage.py runserver
+```
+
+Then <http://127.0.0.1:8000/>. On Windows set `PYTHONIOENCODING=utf-8` first — the sync
+log uses arrows. `pytest -q` runs the tests; `ruff check .` lints.
+
+### Management commands
+
+| command | what it does |
+| --- | --- |
+| `sync_reddit [--source SUB] [--kind movies\|music] [--limit N] [--max-comments N] [--refresh] [--no-images] [--force]` | fetch listings, comment threads, images; parse recommendations |
+| `reparse_recommendations [--post ID] [--kind ...]` | re-run the parser over stored comments (no network) |
+| `bootstrap` | create the two default sources, seed service settings from `.env` (idempotent) |
+
+## Configuration
+
+Everything is in `.env` (see `.env.example` for every key):
+
+- `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS` (comma-separated; must
+  include the IP/hostname you browse to)
+- `CREDENTIAL_ENCRYPTION_KEY` — Fernet key for the stored service credentials
+- `REDDIT_BACKEND` (`auto` / `archive` / `direct` / `praw`), `ARCHIVE_USER_AGENT`,
+  `REDDIT_FETCH_USER_AGENT`, optional `REDDIT_CLIENT_ID` / `SECRET`
+- `RADARR_URL` / `RADARR_API_KEY`, `LIDARR_URL` / `LIDARR_API_KEY`, `JELLYFIN_URL` /
+  `JELLYFIN_API_KEY`, `NAVIDROME_URL` / `NAVIDROME_USERNAME` / `NAVIDROME_PASSWORD` —
+  only used to seed the Settings page on first run; the Settings page is the source of
+  truth afterwards
+
+Subreddits are managed on the Settings page too (add more sources to either section).
+
+## Notes on the integrations
+
+- **Radarr**: lookup by title (+year when known), add monitored with the chosen root
+  folder / quality profile, search immediately (toggle). Already-present films are
+  reported, not duplicated.
+- **Lidarr** has no per-track concept, so a track is pushed as the album/single that
+  carries it (album lookup by `Artist Title`, swapped order tried too); if none can be
+  identified the artist is added unmonitored for hand-picking. Lidarr leaves a freshly
+  added artist unmonitored after an album add and would skip it in RSS sync — the client
+  waits for Lidarr's refresh and re-monitors it.
+- **Jellyfin** / **Navidrome**: each recommendation is fuzzy-matched against the library;
+  the ones found go into a new playlist, the rest are listed as "not in the library".
 
 ## Status
 
-🚧 **Early scaffolding.** This repo currently holds project setup only — no application
-code yet. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the planned design
-(data model, Reddit ingestion approach, recommendation parsing strategy, and how each
-integration works) before the Django project itself lands.
-
-## Planned stack
-
-- **Django** — chosen over Flask for the built-in admin (handy for inspecting cached
-  Reddit data and debugging the recommendation parser), migrations, and ORM, given the
-  amount of structured/relational data this app carries.
-- **Unauthenticated fetching from old.reddit.com**, paced carefully — not Reddit's
-  official OAuth API. Reddit closed self-service developer app registration in late 2025
-  ("Responsible Builder Policy"); new personal-use apps are rejected in practice. See
-  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full reasoning, the current
-  evidence it works, and the request-pacing rules that keep it working.
-- A periodic sync management command (cron-driven, matching the rest of this homelab's
-  automation) rather than a Celery/Redis stack — this is a single-user tool, not a
-  service that needs a task queue.
-
-## Getting set up (once code lands)
-
-1. Copy `.env.example` to `.env` and fill in a Django `SECRET_KEY` and a Fernet
-   `CREDENTIAL_ENCRYPTION_KEY` (used to encrypt saved service credentials at rest — never
-   store Radarr/Lidarr/Jellyfin/Navidrome secrets in plain text). The Reddit fields can
-   be left as their defaults for now — see the comments in `.env.example`.
-2. `python -m venv .venv && .venv\Scripts\activate` (or `source .venv/bin/activate` on
-   Linux), then `pip install -r requirements.txt`.
-3. Django project setup (`manage.py`, migrations, first run) is the next piece of work —
-   not yet in this repo.
-
-Optional: a Reddit developer app registration (free, at
-<https://www.reddit.com/prefs/apps>, type **script**) is worth submitting anyway in case
-it's ever approved — the sync command will use it automatically if the credentials are
-present — but nothing in this app depends on it being approved.
+Working end-to-end and tested against the real services on the LAN; not yet deployed to
+the LXC. There is no login — keep it on the LAN (like Glance/Homepage).
 
 ## License
 
-[MIT](LICENSE) — see the license file for the full text. Change this before publishing
-if you'd rather use something else; it's just a sane permissive default for a personal
-project.
+[MIT](LICENSE).

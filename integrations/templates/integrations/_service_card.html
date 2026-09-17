@@ -1,0 +1,93 @@
+{% with opts=svc.options %}
+<form class="panel" id="svc-{{ svc.service }}" method="post" action="{% url 'integrations:save_service' svc.service %}">
+  {% csrf_token %}
+  <div class="panel-head">
+    <h2>{{ svc.get_service_display }}</h2>
+    <span class="chip {% if svc.last_test_ok %}ok{% elif svc.last_test_ok == False %}err{% endif %}" title="{{ svc.last_test_message }}">
+      {% if svc.last_test_ok %}connected{% elif svc.last_test_ok == False %}failed{% elif svc.is_configured %}untested{% else %}not configured{% endif %}
+    </span>
+    <div class="tools">
+      <label class="status-line"><input type="checkbox" name="enabled" {% if svc.enabled %}checked{% endif %}> enabled</label>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="field">
+      <label>URL</label>
+      <input type="url" name="url" value="{{ svc.url }}" placeholder="{% if svc.service == 'radarr' %}http://192.168.1.110:7878{% elif svc.service == 'lidarr' %}http://192.168.1.110:8686{% elif svc.service == 'jellyfin' %}http://192.168.1.111:8096{% else %}http://192.168.1.110:4534{% endif %}">
+    </div>
+    {% if svc.uses_api_key %}
+      <div class="field">
+        <label>API key <span class="hint">{% if svc.api_key %}(saved, encrypted — leave blank to keep){% else %}(required){% endif %}</span></label>
+        <input type="password" name="api_key" autocomplete="new-password" placeholder="{% if svc.api_key %}••••••••{% endif %}">
+      </div>
+    {% else %}
+      <div class="field"><label>Username</label><input type="text" name="username" value="{{ svc.username }}" autocomplete="off"></div>
+      <div class="field">
+        <label>Password <span class="hint">{% if svc.password %}(saved, encrypted — leave blank to keep){% else %}(required){% endif %}</span></label>
+        <input type="password" name="password" autocomplete="new-password" placeholder="{% if svc.password %}••••••••{% endif %}">
+      </div>
+    {% endif %}
+
+    {% if svc.service == 'radarr' or svc.service == 'lidarr' %}
+      <div class="field">
+        <label>Root folder</label>
+        {% if opts.root_folders %}
+          <select name="root_folder">{% for r in opts.root_folders %}<option value="{{ r.path }}" {% if r.path == opts.root_folder %}selected{% endif %}>{{ r.path }}</option>{% endfor %}</select>
+        {% else %}<input type="text" name="root_folder" value="{{ opts.root_folder|default:'' }}" placeholder="press Test to load choices">{% endif %}
+      </div>
+      <div class="field">
+        <label>Quality profile</label>
+        {% if opts.quality_profiles %}
+          <select name="quality_profile_id">{% for p in opts.quality_profiles %}<option value="{{ p.id }}" {% if p.id|stringformat:"s" == opts.quality_profile_id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+        {% else %}<input type="text" name="quality_profile_id" value="{{ opts.quality_profile_id|default:'' }}" placeholder="press Test to load choices">{% endif %}
+      </div>
+    {% endif %}
+    {% if svc.service == 'lidarr' %}
+      <div class="field">
+        <label>Metadata profile</label>
+        {% if opts.metadata_profiles %}
+          <select name="metadata_profile_id">{% for p in opts.metadata_profiles %}<option value="{{ p.id }}" {% if p.id|stringformat:"s" == opts.metadata_profile_id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+        {% else %}<input type="text" name="metadata_profile_id" value="{{ opts.metadata_profile_id|default:'' }}" placeholder="press Test to load choices">{% endif %}
+      </div>
+      <div class="field">
+        <label>Artist-only recommendations ("anything by X")</label>
+        <select name="artist_monitor">
+          <option value="none" {% if opts.artist_monitor|default:"none" == "none" %}selected{% endif %}>add artist unmonitored (pick albums in Lidarr)</option>
+          <option value="latest" {% if opts.artist_monitor == "latest" %}selected{% endif %}>monitor latest album + search</option>
+          <option value="all" {% if opts.artist_monitor == "all" %}selected{% endif %}>monitor all albums + search (can be a lot)</option>
+        </select>
+      </div>
+    {% endif %}
+    {% if svc.service == 'radarr' %}
+      <div class="field">
+        <label>Minimum availability</label>
+        <select name="minimum_availability">
+          <option value="released" {% if opts.minimum_availability|default:"released" == "released" %}selected{% endif %}>Released</option>
+          <option value="inCinemas" {% if opts.minimum_availability == "inCinemas" %}selected{% endif %}>In cinemas</option>
+          <option value="announced" {% if opts.minimum_availability == "announced" %}selected{% endif %}>Announced</option>
+        </select>
+      </div>
+    {% endif %}
+    {% if svc.service == 'radarr' or svc.service == 'lidarr' %}
+      <label class="status-line"><input type="checkbox" name="search_on_add" {% if opts.search_on_add|default_if_none:True %}checked{% endif %}> search for downloads immediately after adding</label>
+    {% endif %}
+    {% if svc.service == 'jellyfin' %}
+      <div class="field">
+        <label>Playlists are created for user</label>
+        {% if opts.users %}
+          <select name="user_id">{% for u in opts.users %}<option value="{{ u.id }}" {% if u.id == opts.user_id %}selected{% endif %}>{{ u.name }}{% if u.admin %} (admin){% endif %}</option>{% endfor %}</select>
+        {% else %}<input type="text" name="user_id" value="{{ opts.user_id|default:'' }}" placeholder="press Test to load users">{% endif %}
+      </div>
+    {% endif %}
+
+    <div class="form-actions">
+      <button class="btn primary" type="submit">Save</button>
+      <button class="btn" type="submit" name="test" value="1">Save &amp; test</button>
+      <button class="btn ghost" type="button" hx-post="{% url 'integrations:test_service' svc.service %}" hx-target="#svc-{{ svc.service }}" hx-swap="outerHTML">Test saved settings</button>
+    </div>
+    {% if svc.last_test_at %}
+      <div class="status-line">{% if svc.last_test_ok %}✓{% else %}✕{% endif %} {{ svc.last_test_message }} <span class="hint">· {{ svc.last_test_at|timesince }} ago</span></div>
+    {% endif %}
+  </div>
+</form>
+{% endwith %}

@@ -1,0 +1,25 @@
+<li class="rec {% if not rec.included %}excluded{% endif %}" id="rec-{{ rec.pk }}">
+  <input type="checkbox" {% if rec.included %}checked{% endif %} hx-post="{% url 'vibes:rec_toggle' rec.pk %}" title="Include in exports / pushes">
+  <div>
+    <div class="label">{{ rec.display_label }}</div>
+    <div class="sub">
+      <span class="conf {{ rec.confidence_band }}" title="confidence {{ rec.confidence }}"></span>
+      <span title="{{ rec.get_method_display }}">{{ rec.get_method_display|lower }}</span>
+      {% if rec.mention_count > 1 %}<span class="chip">×{{ rec.mention_count }} mentions</span>{% endif %}
+      {% if rec.comment_score > 1 %}<span>▲ {{ rec.comment_score }}</span>{% endif %}
+      {% if rec.parsed_url %}<a href="{{ rec.parsed_url }}" target="_blank" rel="noopener">link ↗</a>{% endif %}
+      {% if rec.comment_url %}<a href="{{ rec.comment_url }}" target="_blank" rel="noopener">comment ↗</a>{% endif %}
+      {% for svc, st in rec.integration_state.items %}
+        <span class="chip {% if st.status == 'added' or st.status == 'exists' or st.status == 'playlisted' %}ok{% elif st.status == 'error' or st.status == 'not_found' %}err{% else %}warn{% endif %}" title="{{ st.detail }}">{{ svc }}: {{ st.status }}</span>
+      {% endfor %}
+    </div>
+    {% if rec.raw_text %}
+    <details><summary>source comment{% if rec.comment_author %} · u/{{ rec.comment_author }}{% endif %}</summary>
+      <blockquote>{{ rec.raw_text|truncatechars:1200 }}</blockquote></details>
+    {% endif %}
+  </div>
+  <div class="ops">
+    <button class="btn small ghost" hx-get="{% url 'vibes:rec_edit' rec.pk %}" hx-target="#rec-{{ rec.pk }}" hx-swap="outerHTML" title="Edit">✎</button>
+    <button class="btn small ghost danger" hx-post="{% url 'vibes:rec_delete' rec.pk %}" hx-confirm="Delete this recommendation?" title="Delete">✕</button>
+  </div>
+</li>

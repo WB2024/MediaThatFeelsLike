@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+exclude = [".venv", "*/migrations/*", "staticfiles", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ"]
+ignore = [
+    "E501",   # long lines: regex tables and template-ish strings; formatter not enforced
+    "DJ001",  # null=True on string fields is fine here (year is optional)
+    "DJ012",  # model method ordering
+    "RUF012",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "vibes", "reddit_sync", "integrations", "exports"]

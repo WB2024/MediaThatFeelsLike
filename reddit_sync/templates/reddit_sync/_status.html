@@ -1,0 +1,26 @@
+<div id="sync-status" {% if run and run.is_running %}hx-get="{% url 'reddit_sync:status_panel' %}" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  {% if run %}
+    <div class="sync-stats">
+      <span>status <b>{{ run.get_status_display }}</b></span>
+      <span>started <b>{{ run.started_at|date:"D H:i:s" }}</b></span>
+      <span>took <b>{{ run.duration|default:""|truncatechars:12 }}</b></span>
+      <span>posts <b>{{ run.posts_seen }}</b> (new {{ run.posts_new }})</span>
+      <span>threads <b>{{ run.comments_fetched }}</b></span>
+      <span>recs <b>{{ run.recommendations_created }}</b></span>
+      <span>images <b>{{ run.images_cached }}</b></span>
+      <span>requests <b>{{ run.requests_made }}</b></span>
+      {% if run.errors %}<span style="color:var(--danger)">errors <b>{{ run.errors }}</b></span>{% endif %}
+      {% if run.blocked %}<span style="color:var(--danger)"><b>blocked</b></span>{% endif %}
+    </div>
+    {% if cooldown %}<p class="status-line" style="color:var(--danger)">Cooling down until {{ cooldown|date:"H:i" }} after a block.</p>{% endif %}
+    <pre class="log">{{ run.log|default:"(no log yet)" }}</pre>
+    {% if runs|length > 1 %}
+    <details><summary class="status-line" style="cursor:pointer">Previous runs</summary>
+      <table class="sources"><tr><th>Started</th><th>Status</th><th>Trigger</th><th>Sources</th><th>Posts</th><th>Threads</th><th>Recs</th><th>Req</th><th>Err</th></tr>
+      {% for r in runs|slice:"1:" %}<tr><td>{{ r.started_at|date:"D H:i" }}</td><td>{{ r.get_status_display }}</td><td>{{ r.get_trigger_display }}</td><td>{{ r.sources|truncatechars:34 }}</td><td>{{ r.posts_seen }}</td><td>{{ r.comments_fetched }}</td><td>{{ r.recommendations_created }}</td><td>{{ r.requests_made }}</td><td>{{ r.errors }}</td></tr>{% endfor %}
+      </table></details>
+    {% endif %}
+  {% else %}
+    <p class="status-line">No sync has run yet.</p>
+  {% endif %}
+</div>

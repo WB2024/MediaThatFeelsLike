@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Settings · MediaThatFeelsLike{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Settings</h1><span class="count">Credentials are encrypted at rest and never shown again once saved.</span></div>
+
+<div class="settings">
+  {% for svc in services %}{% include "integrations/_service_card.html" %}{% endfor %}
+</div>
+
+<h2 style="font-size:17px;margin:28px 0 10px" id="sources">Sources</h2>
+<form class="panel" method="post" action="{% url 'integrations:save_sources' %}">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <div class="panel-body" style="overflow-x:auto">
+    <table class="sources">
+      <tr><th>Subreddit</th><th>Section</th><th>Listing</th><th>Top period</th><th>Fetch limit</th><th>Enabled</th><th>Last synced</th><th>Delete</th></tr>
+      {% for f in formset %}
+        <tr>
+          {{ f.id }}
+          <td>{{ f.subreddit }}</td><td>{{ f.kind }}</td><td>{{ f.listing }}</td><td>{{ f.time_filter }}</td><td>{{ f.fetch_limit }}</td><td>{{ f.enabled }}</td>
+          <td class="status-line">{% if f.instance.last_synced_at %}{{ f.instance.last_synced_at|timesince }} ago{% elif f.instance.pk %}never{% endif %}</td>
+          <td>{% if f.instance.pk %}{{ f.DELETE }}{% endif %}</td>
+        </tr>
+        {% if f.errors %}<tr><td colspan="8" style="color:var(--danger)">{{ f.errors }}</td></tr>{% endif %}
+      {% endfor %}
+    </table>
+    <p class="hint status-line">Listing / top period only matter for the direct Reddit backend; the archive backend always pulls the most recent posts and the grid does its own ranking.</p>
+    <div class="form-actions"><button class="btn primary" type="submit">Save sources</button></div>
+  </div>
+</form>
+
+<h2 style="font-size:17px;margin:28px 0 10px" id="sync">Sync</h2>
+<div class="panel">
+  <div class="panel-body">
+    <form method="post" action="{% url 'reddit_sync:start' %}" class="form-actions">
+      {% csrf_token %}
+      <button class="btn primary" type="submit" {% if run and run.is_running %}disabled{% endif %}>Sync now</button>
+      <label class="status-line">max comment threads this run <input type="number" name="max_comments" value="40" min="1" max="300" style="width:80px"></label>
+      <span class="hint status-line">Cron does this every 30 min in production; this button is for impatience and first runs.</span>
+    </form>
+    {% include "reddit_sync/_status.html" %}
+  </div>
+</div>
+{% endblock %}

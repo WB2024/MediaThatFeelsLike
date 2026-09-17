@@ -1,0 +1,17 @@
+<div class="results">
+  {% if error %}
+    <div style="color:var(--danger)">✕ {{ error }}</div>
+  {% else %}
+    <div>{{ summary }}</div>
+    {% if results %}
+    <ul>
+      {% for r in results %}
+        <li class="{% if r.status == 'added' or r.status == 'exists' or r.status == 'playlisted' %}ok{% elif r.status == 'error' or r.status == 'not_found' %}err{% else %}skip{% endif %}">
+          <b>{{ r.rec.display_label }}</b> — {{ r.status }}: {{ r.detail }}
+        </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  {% endif %}
+</div>
+{% if recs %}{% include "vibes/_rec_list.html" with oob=True oob_count=True %}{% endif %}

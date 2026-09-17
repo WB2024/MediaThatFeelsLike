@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}{{ post.title|truncatechars:70 }} · MediaThatFeelsLike{% endblock %}
+{% block content %}
+<div class="detail">
+  <section>
+    <div class="hero">
+      {% if images %}
+        <img id="hero-img" src="{{ images.0.full_url }}" alt="{{ post.title }}">
+        {% if images|length > 1 %}
+          <div class="strip">
+            {% for img in images %}
+              <img src="{{ img.display_url }}" alt="" class="{% if forloop.first %}active{% endif %}" data-full="{{ img.full_url }}"
+                   onclick="document.getElementById('hero-img').src=this.dataset.full;for(const i of this.parentNode.children)i.classList.remove('active');this.classList.add('active')">
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="ph" style="padding:60px 20px;text-align:center;color:var(--muted)">No image on this post</div>
+      {% endif %}
+    </div>
+    <h1>{{ post.title }}</h1>
+    <div class="post-meta">
+      <span>r/{{ post.source.subreddit }}</span>
+      <span>u/{{ post.author }}</span>
+      <span>▲ {{ post.score|intcomma }}</span>
+      <span>💬 {{ post.num_comments|intcomma }}</span>
+      <span title="{{ post.created_utc }}">{{ post.created_utc|naturaltime }}</span>
+      <a href="{{ post.reddit_url }}" target="_blank" rel="noopener">open on Reddit ↗</a>
+      <span hx-target="this" hx-swap="innerHTML">
+        <button class="btn small {% if post.starred %}primary{% endif %}" hx-post="{% url 'vibes:post_flag' post.pk 'starred' %}" hx-swap="outerHTML">{% if post.starred %}★ Starred{% else %}☆ Star{% endif %}</button>
+      </span>
+      <form method="post" action="{% url 'vibes:post_flag' post.pk 'hidden' %}" style="display:inline">{% csrf_token %}<button class="btn small ghost" type="submit">Hide</button></form>
+    </div>
+    {% if post.selftext %}<div class="selftext">{{ post.selftext }}</div>{% endif %}
+    {% if images.0.caption %}<p class="post-meta">{{ images.0.caption }}</p>{% endif %}
+  </section>
+
+  <aside class="panel" id="rec-panel">
+    <div class="panel-head">
+      <h2>Recommendations</h2>
+      <span class="count" id="rec-count">{{ included_count }} of {{ recs|length }} included</span>
+      <div class="tools">
+        <button class="btn small ghost" title="Re-run the parser over the stored comments" hx-post="{% url 'vibes:post_reparse' post.pk %}" hx-target="#rec-list">Re-parse</button>
+        <button class="btn small ghost" title="Fetch the comments again now (1 request)" hx-post="{% url 'vibes:post_refresh' post.pk %}" hx-target="#rec-list" {% if cooldown %}disabled title="Cooling down until {{ cooldown|time }}"{% endif %}>
+          <span class="label">Refresh</span><span class="htmx-indicator">…</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <details class="dropdown">
+        <summary class="btn">⬇ Export</summary>
+        <div class="menu">
+          <a href="{% url 'exports:download' post.pk 'csv' %}">CSV</a>
+          <a href="{% url 'exports:download' post.pk 'txt' %}">Plain text</a>
+          <a href="{% url 'exports:download' post.pk 'm3u' %}">M3U</a>
+          <a href="{% url 'exports:download' post.pk 'm3u8' %}">M3U8 (UTF-8)</a>
+        </div>
+      </details>
+      {% if can_radarr %}
+        <button class="btn primary" hx-post="{% url 'integrations:push' post.pk 'radarr' %}" hx-target="#action-results" hx-swap="innerHTML" hx-confirm="Add all included titles to Radarr and start searching?">
+          <span class="label">＋ Add to Radarr</span><span class="htmx-indicator">working…</span>
+        </button>
+      {% endif %}
+      {% if can_lidarr %}
+        <button class="btn primary" hx-post="{% url 'integrations:push' post.pk 'lidarr' %}" hx-target="#action-results" hx-swap="innerHTML" hx-confirm="Add all included tracks' albums to Lidarr and start searching?">
+          <span class="label">＋ Add to Lidarr</span><span class="htmx-indicator">working…</span>
+        </button>
+      {% endif %}
+      {% if can_jellyfin %}
+        <button class="btn" hx-post="{% url 'integrations:push' post.pk 'jellyfin' %}" hx-target="#action-results" hx-swap="innerHTML" hx-prompt="Jellyfin playlist name" hx-vals='{"name": "{{ post.title|escapejs|truncatechars:60 }}"}'>
+          <span class="label">▶ Jellyfin playlist</span><span class="htmx-indicator">working…</span>
+        </button>
+      {% endif %}
+      {% if can_navidrome %}
+        <button class="btn" hx-post="{% url 'integrations:push' post.pk 'navidrome' %}" hx-target="#action-results" hx-swap="innerHTML" hx-prompt="Navidrome playlist name" hx-vals='{"name": "{{ post.title|escapejs|truncatechars:60 }}"}'>
+          <span class="label">▶ Navidrome playlist</span><span class="htmx-indicator">working…</span>
+        </button>
+      {% endif %}
+      {% if not services %}
+        <a class="btn ghost" href="{% url 'integrations:settings' %}">Configure services →</a>
+      {% endif %}
+    </div>
+    <div id="action-results"></div>
+
+    {% include "vibes/_rec_list.html" %}
+  </aside>
+</div>
+{% endblock %}

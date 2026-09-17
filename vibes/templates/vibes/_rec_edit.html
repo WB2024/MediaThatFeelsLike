@@ -1,0 +1,19 @@
+<li class="rec" id="rec-{{ rec.pk }}">
+  <span></span>
+  <form class="rec-edit" hx-post="{% url 'vibes:rec_edit' rec.pk %}" hx-target="#rec-list" hx-swap="outerHTML">
+    {% if rec.post.source.is_music %}
+      <input type="text" name="artist" value="{{ rec.parsed_artist }}" placeholder="Artist">
+      <input type="text" name="title" value="{{ rec.parsed_title }}" placeholder="Track title">
+      <span></span>
+    {% else %}
+      <input type="text" name="title" value="{{ rec.parsed_title }}" placeholder="Film title" style="grid-column:1/3">
+      <input type="number" name="year" value="{{ rec.parsed_year|default_if_none:'' }}" placeholder="Year" min="1888" max="2030">
+    {% endif %}
+    <div class="full">
+      <button class="btn small primary" type="submit">Save</button>
+      <button class="btn small ghost" type="button" hx-get="{% url 'vibes:post_detail' rec.post.pk %}" hx-select="#rec-list" hx-target="#rec-list" hx-swap="outerHTML">Cancel</button>
+      {% if error %}<span style="color:var(--danger);font-size:12.5px">{{ error }}</span>{% endif %}
+    </div>
+  </form>
+  <span></span>
+</li>

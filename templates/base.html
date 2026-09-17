@@ -1,0 +1,31 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-kind="{{ kind|default:'movies' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}MediaThatFeelsLike{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
+  <script src="{% static 'js/htmx.min.js' %}" defer></script>
+  <meta name="htmx-config" content='{"defaultSwapStyle":"outerHTML"}'>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <header class="topbar">
+    <a class="brand" href="{% url 'vibes:home' %}">Media<span>That</span>FeelsLike</a>
+    <nav class="nav">
+      {% for key, label in sections %}
+        <a href="{% url 'vibes:section' key %}" class="{% if kind == key and not settings_page %}active{% endif %}">{{ label }}</a>
+      {% endfor %}
+      <a href="{% url 'integrations:settings' %}" class="{% if settings_page %}active{% endif %}">Settings</a>
+    </nav>
+    <div class="spacer"></div>
+    <div hx-get="{% url 'reddit_sync:status_pill' %}" hx-trigger="load, every 15s" hx-swap="innerHTML"></div>
+  </header>
+  <main>
+    {% if messages %}
+      <ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -30,79 +30,91 @@ push it into Radarr/Lidarr/Jellyfin/Navidrome.
 - Four external integrations (Radarr, Lidarr, Jellyfin, Navidrome) plus Reddit sync are
   cleanly separable into their own Django apps.
 
-## Reddit access: unauthenticated fetch, not the official API
+## Reddit access: the Arctic Shift archive, with direct fetch as a fallback
 
-**Revised 2026-09-17.** The original plan here was PRAW against Reddit's official OAuth
-API. That's now blocked in practice: Reddit closed self-service developer app
-registration in November 2025 under its "Responsible Builder Policy" — the
-`reddit.com/prefs/apps` "create app" form now rejects essentially all new personal-use
-app registrations (confirmed directly: hit this wall trying to register this project's
-own app). This wasn't a mistake in the form submission; it's a Reddit-side policy change
-that arrived after the original recommendation was made. Recorded here so nobody
-re-discovers this the hard way a second time.
+**Revised again 2026-09-17, after building the sync and testing it for real.** This
+section has now been rewritten twice, each time on evidence, so the reasoning is kept in
+full:
 
-**What still works, verified directly against this exact network on 2026-09-17:**
-Unauthenticated fetches from `old.reddit.com` (JSON endpoints) succeed when the request
-carries a realistic desktop browser `User-Agent` and is paced sensibly — no burst
-traffic. Evidence: Glance (this homelab's dashboard) live-fetches 25+ subreddits this way
-on a 30-minute cache with zero issues. The one time this project's own scripted checks
-got soft-blocked was after ~40 rapid-fire verification requests in a couple of minutes
-from one IP — a burst pattern this app will never produce, since it only needs to check
-two subreddits every so often.
+1. **Official OAuth API (PRAW)** -- the original plan. Reddit closed self-service
+   developer app registration in November 2025 ("Responsible Builder Policy"); the
+   `reddit.com/prefs/apps` form rejects new personal-use apps in practice (confirmed
+   directly with this project's own registration attempt). Kept as an optional backend
+   (`REDDIT_BACKEND=praw`) in case a registration is ever approved.
 
-Design consequences:
+2. **Unauthenticated JSON from reddit.com** -- the second plan, and the first thing built.
+   It works *until it doesn't*: Reddit rate-limits logged-out access per IP, and once an
+   IP trips the limit (about 40 requests in a couple of minutes did it during
+   verification) every JSON endpoint stays blocked for hours -- `www.reddit.com` answers
+   403 with an HTML interstitial and `old.reddit.com` redirects to `/login?reason=lor2`
+   ("logged-out rate limit"). Measured: still blocked three hours later at one probe
+   request every five minutes. Browser-impersonated TLS fingerprints didn't help; RSS
+   feeds were served but are rate-limited too, and for gallery posts (most of both subs)
+   RSS only carries a 140px thumbnail. Glance survives on the same WAN IP because it
+   caches for 30 minutes and only refreshes on page view -- a much smaller footprint than
+   a comment-thread-per-post sync. Kept as `REDDIT_BACKEND=direct` with a per-IP cooldown
+   (doubling from 30 min after each blocked run) so cron can never poke a blocked IP.
 
-- **Realistic `User-Agent`** on every request (a real Chrome/Firefox desktop string, not
-  a polite "AppName/1.0 by u/username" — that convention is for the OAuth API's own
-  etiquette, not for unauthenticated fetches, and using it here would make requests
-  *more* identifiable as a bot, not less).
-- **One request per post for full detail** — `old.reddit.com/r/<sub>/comments/<id>/.json`
-  returns the post *and* its full comment tree in a single call, avoiding a separate
-  listing + comments round trip per post.
-- **Cache aggressively, re-check rarely.** A post's comments/images don't need
-  re-fetching once synced; only score/comment-count are worth periodically refreshing
-  (and even that on a slow cadence, e.g. once a day), which keeps total request volume
-  low regardless of how large the archive grows.
-- **Self-throttle with multi-second gaps** between requests within a sync run, and back
-  off (skip the rest of that run, try again next scheduled run) on any non-200 response
-  rather than retrying immediately — never turn a transient hiccup into the burst pattern
-  that causes blocks in the first place.
-- **Keep the official-API door open, but don't depend on it.** `REDDIT_CLIENT_ID` /
-  `REDDIT_CLIENT_SECRET` stay in `.env.example` as optional — if a Reddit app
-  registration ever does get approved (worth submitting anyway since it costs nothing),
-  the sync command should prefer it automatically. Nothing in the design should require
-  it.
-- **No third-party scraping-API middleman.** Paid scraping services exist for this
-  exact problem, but they cost money on an ongoing basis, add a dependency on another
-  company's ToS/business model, and route this app's subreddit reading through a third
-  party — all three cut against the point of self-hosting. Only worth reconsidering if
-  direct unauthenticated fetching stops working entirely.
+3. **Arctic Shift** (`https://arctic-shift.photon-reddit.com`) -- the default now. It is a
+   public, volunteer-run archive of Reddit with a documented JSON API:
+   `/api/posts/search?subreddit=&limit=100&sort=desc&sort_type=created_utc` (page back
+   with `before=<unix ts>`), and `/api/comments/tree?link_id=<post id>&limit=1000`. Posts
+   appear within about an hour of being made; a second retrieval pass roughly a day
+   later refreshes the post's score/comment count and the comment tree with real
+   scores. Verified on 2026-09-17 against r/MoviesThatFeelLike: a 591-comment thread came
+   back as a 608-node tree with scores up to 259 and depths to 4; gallery
+   `media_metadata` is present so every image can be fetched at full size from
+   `i.redd.it` / `preview.redd.it` (the image CDN is not rate-limited the way the API
+   is). Limits: 100 items per page, recency sort only (the app does its own "hot"
+   ranking), no `score` sort. One request per listing page plus one per comment tree.
+
+The earlier line here that said "no third-party middleman" was written with *paid
+scraping services* in mind. Arctic Shift is a different thing: free, open, documented,
+and the only path that gives full data without playing cat-and-mouse with Reddit's
+anti-bot layer. The app identifies itself honestly to it (`ARCHIVE_USER_AGENT`), paces
+at about one request per second, and caps how many comment threads a sync run fetches
+(`--max-comments`, default 40, split evenly across sources). Deleted posts live on in
+the archive with their images gone from the CDN; the sync hides any post whose images
+all fail to download.
+
+All three backends implement the same two calls (`listing`, `post_with_comments`) and
+return the same dict shapes, so the sync code doesn't know which one it's talking to.
+`REDDIT_BACKEND=auto` (the default) means PRAW if OAuth credentials exist, else the
+archive.
 
 ## Sync design
 
-A Django management command (`sync_reddit` or similar), run periodically by **cron** —
-not Celery/Redis. This matches how every other automation in this homelab already works
-(the Lidarr drip search, queue janitor, unmapped janitor, path fixer are all cron-driven
-Python scripts with self-throttling state files), and a single-user tool pulling two
-subreddits every N minutes does not need a task queue's operational overhead.
+`manage.py sync_reddit` -- a Django management command, run periodically. In the compose
+stack it runs from a tiny sidecar container that loops `sync; sleep 1800`
+(`docker/sync-loop.sh`); on a bare host a cron line does the same job. Not Celery/Redis:
+every other automation in this homelab is a cron-driven Python script, and a single-user
+tool pulling two subreddits every half hour does not need a task queue.
 
-Per sync run, per subreddit:
-1. Fetch the `hot` (and optionally `top` / `new` — configurable) listing page for new
-   post IDs — one lightweight request.
-2. For each post not already stored (dedupe on Reddit's post ID), fetch that post's own
-   `/comments/<id>/.json` (post + full comment tree in one call). Extract image URL(s) —
-   handling `is_gallery` posts (multiple images via `media_metadata`), single-image posts
-   (`url_overridden_by_dest` / `preview.images[0].source.url`), and skip text-only posts
-   with no image (nothing to tile).
-3. Parse the fetched comments (sorted by score, capped at some count — e.g. top 50) for
-   the recommendation parser.
-4. Store post metadata (title, score, comment count, permalink, created time) +
-   image(s) + raw comment text for parsing. Pace requests with a multi-second delay
-   between posts; stop the run early on any non-200 response instead of retrying.
+Per run, per enabled `Source`:
 
-Re-sync of an existing post occasionally refreshes score/comment count (posts age and
-gain recommendations over time) without re-parsing comments that haven't changed, to
-keep total request volume low no matter how large the archive gets.
+1. Fetch the listing (one request) and upsert `Post` rows (title, score, comment count,
+   trimmed raw JSON, image URLs extracted from `media_metadata` / `url` / `preview`).
+2. Queue comment fetches: new posts first, then any post whose comment count has grown
+   by 3+ since its last fetch and that hasn't been fetched in the last 6 hours. The queue
+   is capped per run (`--max-comments`, split evenly across sources) so a cold start
+   spreads over several runs rather than one huge burst.
+3. For each queued post, fetch the comment tree (one request), store the flattened
+   comments on the post (`Post.comments`, so the parser can be re-run offline), and
+   rebuild its `Recommendation` rows -- preserving rows a human has edited or pushed to a
+   service, and manual additions.
+4. Download any uncached images to `MEDIA_ROOT` and write a 640px JPEG thumbnail for
+   the grid (the tile grid never hotlinks Reddit's CDN). Posts whose images have all
+   vanished are hidden.
+
+Every run is recorded as a `SyncRun` (counts, request total, log, blocked flag). A
+running `SyncRun` acts as the lock against overlapping runs; a run stuck for over two
+hours is marked failed automatically. The Settings page has a "Sync now" button that
+starts a run in a background thread and polls the log.
+
+`manage.py reparse_recommendations` re-runs the parser over stored comments with no
+network -- use it after improving the heuristics. `manage.py bootstrap` creates the two
+default sources and seeds service settings from `.env`; it is idempotent and runs on
+every container start.
 
 ## Data model (sketch)
 
@@ -185,38 +197,51 @@ error) rather than a single pass/fail for the whole batch — with a curated lis
 10-30 items, "3 of 12 didn't match, here's which ones" is far more useful than a silent
 partial success.
 
-## App layout (planned Django apps)
+## App layout
 
 ```
-mediathatfeelslike/
-├── config/                # Django project settings/urls/wsgi
-├── vibes/                 # Post, PostImage, Recommendation, Source models + the
-│                          # tile-grid and detail-page views (the core UI)
-├── reddit_sync/           # unauthenticated fetch client (+ optional PRAW/OAuth path
-│                          # if an app registration ever gets approved), the sync
-│                          # management command, comment parser
-├── integrations/          # Radarr/Lidarr/Jellyfin/Navidrome clients + ServiceConfig
-│                          # model + the settings page
-└── exports/               # CSV/TXT/M3U serializers
+MediaThatFeelsLike/
+├── config/            # settings (django-environ), urls, wsgi
+├── vibes/             # Source, Post, PostImage, Recommendation; tile grid, detail page,
+│                      # htmx curation endpoints (toggle / edit / add / delete / bulk /
+│                      # re-parse / refresh)
+├── reddit_sync/       # client.py (Archive / Fetch / Praw backends), images.py (URL
+│                      # extraction + caching/thumbnails), parser.py (heuristics),
+│                      # sync.py (the Syncer), SyncRun model, management commands
+│                      # sync_reddit / reparse_recommendations / bootstrap
+├── integrations/      # ServiceConfig (Fernet-encrypted fields), clients/ for Radarr,
+│                      # Lidarr, Jellyfin, Navidrome, push.py orchestration, Settings page
+├── exports/           # CSV / TXT / M3U / M3U8 downloads
+├── templates/         # base layout; app templates live in each app
+├── static/            # app.css (no build step) and a vendored htmx
+├── docker/            # entrypoint.sh (migrate/bootstrap/collectstatic), sync-loop.sh
+└── tests/             # pytest: parser, sync pipeline (fake client), views/exports,
+                       # integration clients (stubbed HTTP)
 ```
 
-## Deployment (once there's something to deploy)
+## Deployment
 
-Matches every other service in this homelab rather than inventing a new pattern:
-Docker container on the services LXC (`192.168.1.110`), `gunicorn` behind the existing
-Nginx Proxy Manager (`<app>.wbhomelab`), sqlite for the database (fine at this scale — a
-single user, a few thousand posts), cron entry for the sync command, and a homepage
-tile once it's live.
+`Dockerfile` + `compose.yaml`: an `app` service (gunicorn, 2 workers x 4 threads, port
+8095 on the host) and a `sync` sidecar sharing the same image and the `./data` volume
+(sqlite database + cached images). Intended home: the services LXC (`192.168.1.110`),
+optionally behind Nginx Proxy Manager for a hostname. There is no login -- the app is
+LAN-only, like Glance and Homepage in this homelab; service credentials are encrypted at
+rest, never rendered back into the browser, and the Django admin (which does have a
+login) hides them too.
 
-## Open questions for when the code lands
+`DJANGO_ALLOWED_HOSTS` must list the LAN IP / hostname the app is reached on.
 
-- Exact sync cadence and post-count-per-sync — needs to stay comfortably low-volume
-  given unauthenticated access is being relied on (see above); not a hard problem, just
-  needs a conservative number chosen deliberately rather than maximized.
-- Whether `top` (of week/month) is worth pulling alongside `hot`, since these subs'
-  best content may not stay on `hot` for long.
-- Default Radarr/Lidarr root folder + quality profile — pull from existing instances'
-  config at setup time rather than asking the user to retype what's already configured.
-- Submit the Reddit developer app registration anyway (it's free) and just let the sync
-  command use it automatically if/when it's ever approved — no downside to having it
-  pending in the background.
+## Known limitations / next steps
+
+- The archive's first pass records a fresh post with score 1 and 0 comments; real
+  numbers arrive with its second pass about a day later, so the "Hot" ordering is only
+  meaningful for posts older than that.
+- The Lidarr push adds the *album/single* that carries a recommended track (Lidarr has
+  no per-track concept); when no album can be identified the artist is added
+  unmonitored for hand-picking. "Anything by X" recommendations are handled the same way
+  (configurable to monitor all/latest).
+- Jellyfin here has no music library, so music playlists are Navidrome's job; the
+  Jellyfin button is still shown for music posts and will simply report "not in the
+  library".
+- Playlist buttons use a browser `prompt()` for the name -- fine for a person, awkward
+  for automation.

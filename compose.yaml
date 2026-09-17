@@ -1,0 +1,33 @@
+# MediaThatFeelsLike on the services LXC. Put a filled-in .env next to this file.
+#   docker compose up -d --build
+# The web app is on port 8095 (change the left-hand side to suit); point Nginx Proxy
+# Manager at it if you want a hostname. There is no login -- keep it on the LAN.
+
+services:
+  app:
+    build: .
+    image: mediathatfeelslike:latest
+    container_name: mediathatfeelslike
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    ports:
+      - "8095:8000"
+    restart: unless-stopped
+
+  sync:
+    image: mediathatfeelslike:latest
+    container_name: mediathatfeelslike-sync
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      SYNC_INTERVAL: "1800"       # seconds between syncs
+      SYNC_MAX_COMMENTS: "40"     # comment threads fetched per sync
+    volumes:
+      - ./data:/data
+    entrypoint: ["/app/docker/sync-loop.sh"]
+    depends_on:
+      - app
+    restart: unless-stopped

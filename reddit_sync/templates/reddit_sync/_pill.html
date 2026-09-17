@@ -1,0 +1,9 @@
+{% if run and run.is_running %}
+  <a class="sync-pill running" href="{% url 'integrations:settings' %}#sync"><span class="dot"></span>syncing · {{ run.comments_fetched }} threads</a>
+{% elif cooldown %}
+  <a class="sync-pill error" href="{% url 'integrations:settings' %}#sync" title="Blocked by Reddit; cooling down"><span class="dot"></span>cooldown until {{ cooldown|time:"H:i" }}</a>
+{% elif run %}
+  <a class="sync-pill {% if run.status == 'ok' %}ok{% elif run.status == 'failed' %}error{% endif %}" href="{% url 'integrations:settings' %}#sync"><span class="dot"></span>synced {{ run.finished_at|timesince|truncatewords:2 }} ago</a>
+{% else %}
+  <a class="sync-pill" href="{% url 'integrations:settings' %}#sync"><span class="dot"></span>never synced</a>
+{% endif %}

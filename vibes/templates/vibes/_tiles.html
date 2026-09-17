@@ -1,0 +1,30 @@
+{% if page.number == 1 %}<div class="tiles" id="tiles">{% endif %}
+{% for post in page %}
+  {% with img=post.primary_image %}
+  <a class="tile" href="{{ post.get_absolute_url }}" title="{{ post.title }}">
+    {% if img %}
+      <img src="{{ img.display_url }}" alt="" loading="lazy" {% if img.width and img.height %}width="{{ img.width }}" height="{{ img.height }}"{% endif %}>
+    {% else %}
+      <div class="ph">{{ post.title|truncatechars:90 }}</div>
+    {% endif %}
+    <span class="badge {% if not post.rec_count %}zero{% endif %}">{{ post.rec_count }} rec{{ post.rec_count|pluralize }}</span>
+    {% if post.is_gallery and post.images.all|length > 1 %}<span class="gal">{{ post.images.all|length }} images</span>{% endif %}
+    <div class="meta">
+      <div class="t">{{ post.title }}</div>
+      <div class="s"><span>▲ {{ post.score }}</span><span>💬 {{ post.num_comments }}</span><span>{{ post.created_utc|timesince|truncatewords:2 }} ago</span></div>
+    </div>
+  </a>
+  {% endwith %}
+{% empty %}
+  {% if page.number == 1 %}
+  <div class="empty">
+    {% if q %}Nothing matches “{{ q }}”.{% else %}No posts yet. Run <code>manage.py sync_reddit</code> or press <b>Sync now</b> on the Settings page.{% endif %}
+  </div>
+  {% endif %}
+{% endfor %}
+{% if page.has_next %}
+  <div class="load-more" hx-get="?sort={{ sort }}&q={{ q|urlencode }}&page={{ page.next_page_number }}" hx-trigger="revealed" hx-swap="outerHTML">
+    <button class="btn">Load more</button>
+  </div>
+{% endif %}
+{% if page.number == 1 %}</div>{% endif %}

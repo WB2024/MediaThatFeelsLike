@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ kind_label }} · MediaThatFeelsLike{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ kind_label }}</h1>
+  <span class="count">{{ total }} post{{ total|pluralize }} · {% for s in sources %}r/{{ s.subreddit }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+  <div class="seg">
+    {% for key, label in sorts.items %}
+      <a href="?sort={{ key }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="{% if sort == key %}active{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <form method="get">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search titles &amp; recs…" size="26">
+    {% if q %}<a class="btn ghost" href="?sort={{ sort }}">Clear</a>{% endif %}
+  </form>
+</div>
+{% include "vibes/_tiles.html" %}
+{% endblock %}
