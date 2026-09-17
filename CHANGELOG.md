@@ -23,7 +23,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Dark, image-first UI: masonry tile grid with hot/new/top/most-recs/starred ordering
   and search, gallery strip on the detail page, inline recommendation editing, star/hide.
 - Docker packaging: `Dockerfile`, `compose.yaml` (app + sync sidecar), entrypoint.
-- Test suite (46 tests): parser, sync pipeline, views/exports, integration clients.
+- Test suite (47 tests): parser, sync pipeline, views/exports, integration clients.
+- Deployed to the services LXC (`192.168.1.110:8095`) and pushed to Docker Hub
+  (`wb20244/mediathatfeelslike`). README screenshots taken from the live deployment.
+- A `MediaThatFeelsLike` tile on the Glance dashboard's Media page.
 - Initial repo scaffolding: README, MIT license, `.gitignore`, `.gitattributes`
   (enforcing LF line endings), `.editorconfig`, `requirements.txt` /
   `requirements-dev.txt`, `.env.example`, `docs/ARCHITECTURE.md`, `CLAUDE.md`.

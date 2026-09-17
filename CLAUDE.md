@@ -50,11 +50,17 @@ Radarr/Lidarr (add + search) or Jellyfin/Navidrome (create playlist).
 
 ## Current state
 
-Working application: sync (archive backend, tested live), tile grids, detail page with
-htmx curation, CSV/TXT/M3U exports, Radarr/Lidarr adds and Jellyfin/Navidrome playlists
-(all four tested against the real services on the LAN), Settings page, Docker/compose
-packaging. `pytest` covers the parser, the sync pipeline (fake client), the views/exports
-and the integration clients (stubbed HTTP). Not yet deployed to the LXC.
+Deployed at `http://192.168.1.110:8095` (compose stack in `/opt/mediathatfeelslike` on
+the services LXC, pulling `wb20244/mediathatfeelslike:latest` from Docker Hub) and on
+the Glance Media page. Sync (archive backend), tile grids, detail page with htmx
+curation, CSV/TXT/M3U exports, Radarr/Lidarr adds and Jellyfin/Navidrome playlists all
+tested against the real services. `pytest` (47 tests) covers the parser, sync pipeline
+(fake client), views/exports, and integration clients (stubbed HTTP).
+
+**Known deploy gotcha**: `django.conf.urls.static.static()` in `config/urls.py` is a
+no-op when `DEBUG=False` -- caught this immediately after the first production deploy
+(every cached image 404'd despite existing on disk). Fixed by serving `MEDIA_URL`
+unconditionally via `django.views.static.serve`; there's a regression test for it.
 
 ## Conventions
 

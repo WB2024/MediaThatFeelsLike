@@ -30,6 +30,15 @@ From there:
 Radarr/Lidarr/Jellyfin/Navidrome are configured once on the Settings page; credentials
 are encrypted at rest and never shown again.
 
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Movies grid](docs/screenshots/movies.jpg) | ![Music grid](docs/screenshots/music.jpg) |
+| Movies — mood-board tile grid | Music — same grid, music section |
+| ![Vibe detail page](docs/screenshots/post-detail.jpg) | ![Settings page](docs/screenshots/settings.jpg) |
+| Vibe page: parsed recommendations, curation, export, integration buttons | Settings: Radarr/Lidarr/Jellyfin/Navidrome, connection-tested |
+
 ## How it gets the data
 
 Reddit's official API is effectively closed to new personal apps (since Nov 2025), and
@@ -114,8 +123,10 @@ Subreddits are managed on the Settings page too (add more sources to either sect
 
 ## Status
 
-Working end-to-end and tested against the real services on the LAN; not yet deployed to
-the LXC. There is no login — keep it on the LAN (like Glance/Homepage).
+Deployed and running on the services LXC (`http://192.168.1.110:8095`), synced against
+both subreddits and tested end-to-end against the real Radarr/Lidarr/Jellyfin/Navidrome
+instances. Also on Docker Hub: [`wb20244/mediathatfeelslike`](https://hub.docker.com/r/wb20244/mediathatfeelslike).
+There is no login — keep it on the LAN (like Glance/Homepage).
 
 ## License
 

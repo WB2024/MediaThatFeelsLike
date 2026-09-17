@@ -223,13 +223,23 @@ MediaThatFeelsLike/
 
 `Dockerfile` + `compose.yaml`: an `app` service (gunicorn, 2 workers x 4 threads, port
 8095 on the host) and a `sync` sidecar sharing the same image and the `./data` volume
-(sqlite database + cached images). Intended home: the services LXC (`192.168.1.110`),
-optionally behind Nginx Proxy Manager for a hostname. There is no login -- the app is
-LAN-only, like Glance and Homepage in this homelab; service credentials are encrypted at
-rest, never rendered back into the browser, and the Django admin (which does have a
-login) hides them too.
+(sqlite database + cached images). There is no login -- the app is LAN-only, like Glance
+and Homepage in this homelab; service credentials are encrypted at rest, never rendered
+back into the browser, and the Django admin (which does have a login) hides them too.
 
 `DJANGO_ALLOWED_HOSTS` must list the LAN IP / hostname the app is reached on.
+
+**Deployed** at `/opt/mediathatfeelslike` on the services LXC (`192.168.1.110:8095`),
+pulling `wb20244/mediathatfeelslike` from Docker Hub rather than building on that LXC's
+disk (it runs tight on space -- check `df -h /` before building there again). Not yet
+behind Nginx Proxy Manager. Listed on the Glance dashboard's Media page as its own
+`monitor` tile (**not** the "More" tile next to it -- that one is reserved for
+NSFW-adjacent tools under a deliberately unobvious name).
+
+Image build/push doesn't need Docker on the dev box: `git archive` the committed tree,
+`pscp` it to the LXC (which already runs Docker for the other services and already had a
+Docker Hub token for `wb20244` configured), `docker build`, `docker push`. Clean up the
+temp build dir and local image tags afterward given the disk headroom.
 
 ## Known limitations / next steps
 
