@@ -1,0 +1,23 @@
+# Core framework
+Django>=5.1,<6.0
+django-environ>=0.11          # reads .env / settings from environment cleanly
+
+# HTTP client for both Reddit fetching (unauthenticated, see docs/ARCHITECTURE.md) and
+# the Radarr/Lidarr/Jellyfin/Navidrome integrations
+requests>=2.31
+
+# Reddit ingestion via the OFFICIAL OAuth API -- optional, only used if a developer app
+# registration is ever approved (see .env.example). Kept installed so that path works
+# the moment it's usable, without needing a dependency added later.
+praw>=7.7
+
+# Encrypting saved service credentials (Radarr/Lidarr/Jellyfin/Navidrome) at rest
+cryptography>=42.0
+
+# Thumbnailing/validating post images pulled from Reddit
+Pillow>=10.3
+
+# Production serving (deployed the same way as the rest of this homelab: a small
+# Docker container behind the existing Nginx Proxy Manager, not `runserver`)
+gunicorn>=22.0
+whitenoise>=6.6                # serves static files without a separate nginx config

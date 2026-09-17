@@ -1,0 +1,27 @@
+# Force LF line endings regardless of platform/editor. This project is developed on
+# Windows but deployed to Linux (a Proxmox LXC) — a CRLF shebang line is silently
+# accepted by Windows tools and then fails on Linux with a cryptic
+# "/usr/bin/env: 'python3\r': No such file or directory" (or "use -[v]S"). Better to
+# never produce the problem than to keep discovering it after deployment.
+* text=auto eol=lf
+
+*.py    text eol=lf
+*.sh    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.html  text eol=lf
+*.txt   text eol=lf
+*.md    text eol=lf
+
+# Binary files — never touch line endings
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary

@@ -1,0 +1,8 @@
+-r requirements.txt
+
+# Linting / formatting
+ruff>=0.6
+
+# Testing
+pytest>=8.2
+pytest-django>=4.8
