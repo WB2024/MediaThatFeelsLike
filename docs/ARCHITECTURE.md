@@ -277,6 +277,13 @@ Reddit CDN URL when nothing's cached locally yet) -- an image that's fine to eve
 appear in this app's own grid isn't guaranteed to load reliably for an external viewer
 right now, so the API only returns posts with an actually-cached file.
 
+**Deployed as**: on the Glance Media page (`/opt/glance/config/pages/media.yml` on the
+services LXC), a stats tile (small column, replacing what used to be a bare
+connectivity-check `monitor` tile) plus two full-width image-strip widgets --
+"MediaThatFeelsLike · Movies" and "· Music" -- placed right after "Continue watching"
+for visibility. Both strips reuse `.wb-card`/`.wb-strip`, this homelab's shared
+custom-widget CSS also used by the Navidrome/Jellyfin strips on the same page.
+
 ## App layout
 
 ```
