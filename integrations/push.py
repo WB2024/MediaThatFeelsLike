@@ -19,10 +19,17 @@ CLIENTS = {
 }
 OK_STATUSES = {"added", "exists", "playlisted", "artist_only", "queued"}
 # A slskd search+download can take up to ~max_wait seconds each; this is a synchronous
-# htmx request behind gunicorn's --timeout, so a single push processes at most this many
-# recommendations -- the rest stay for a follow-up click (already-queued ones are
-# skipped automatically, so repeated clicks work through a long list safely).
+# htmx request behind gunicorn's --timeout (120s), so a single push budgets this many
+# seconds total and processes only as many recommendations as fit -- the rest stay for a
+# follow-up click (already-queued ones are skipped automatically, so repeated clicks work
+# through a long list safely). Scaling by the configured search timeout means raising it
+# for hard-to-find tracks on the Settings page can't push a batch past the worker timeout.
 SLSKD_MAX_PER_PUSH = 6
+SLSKD_TIME_BUDGET = 100
+
+
+def _slskd_batch_size(max_wait):
+    return max(1, min(SLSKD_MAX_PER_PUSH, SLSKD_TIME_BUDGET // max(max_wait, 1)))
 
 
 def client_for(service):
@@ -60,7 +67,8 @@ def push_post(post, service, playlist_name=None):
 def _push_slskd(client, recs):
     already = [r for r in recs if (r.integration_state or {}).get("slskd", {}).get("status") == "queued"]
     pending = [r for r in recs if r not in already]
-    batch, rest = pending[:SLSKD_MAX_PER_PUSH], pending[SLSKD_MAX_PER_PUSH:]
+    batch_size = _slskd_batch_size(client.config.options.get("max_wait", 15))
+    batch, rest = pending[:batch_size], pending[batch_size:]
 
     results = []
     for rec in batch:

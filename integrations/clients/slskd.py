@@ -57,18 +57,25 @@ class SlskdClient(BaseClient):
     # -- searching ----------------------------------------------------------------------
 
     def search(self, query, max_wait=15, poll_interval=1.5):
-        """Start a search and poll until it completes or `max_wait` elapses (a popular
-        track usually hits slskd's own response-limit well within that; an obscure one
-        may still be trickling in when time runs out -- either way, take whatever
-        responses have arrived). Returns the list of per-peer response dicts."""
+        """Start a search and poll until it completes or `max_wait` elapses. A popular
+        track often hits slskd's own response-limit within a few seconds; an obscure one
+        can run for its full internal timeout (~25-30s observed), well past a reasonable
+        UI wait. Critically, GET .../responses returns [] -- not partial data -- until
+        the search reports isComplete, so hitting our own deadline first isn't enough:
+        PUT .../{id} cancels it early, which *does* mark it complete with whatever
+        results have arrived so far. Returns the list of per-peer response dicts."""
         search_id = str(uuid.uuid4())
         self.post(f"{self.api}/searches", json={"id": search_id, "searchText": query})
         deadline = time.monotonic() + max_wait
+        completed = False
         while time.monotonic() < deadline:
             time.sleep(poll_interval)
             status = self.get(f"{self.api}/searches/{search_id}")
             if status.get("isComplete"):
+                completed = True
                 break
+        if not completed:
+            self._request("PUT", f"{self.api}/searches/{search_id}")
         try:
             return self.get(f"{self.api}/searches/{search_id}/responses") or []
         finally:

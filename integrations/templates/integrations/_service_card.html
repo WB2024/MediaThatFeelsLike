@@ -83,7 +83,7 @@
       <div class="field">
         <label>Search timeout (seconds)</label>
         <input type="number" name="max_wait" value="{{ opts.max_wait|default:15 }}" min="5" max="30" style="width:80px">
-        <span class="hint">how long to wait for Soulseek peers to respond before ranking whatever's arrived. Higher finds more but takes longer -- pushes process up to 6 recommendations at a time either way.</span>
+        <span class="hint">how long to wait for Soulseek peers to respond before ranking whatever's arrived. Higher finds more but takes longer -- pushes process fewer recommendations at a time to compensate, so this can't push a batch past the server's request timeout.</span>
       </div>
       <label class="status-line"><input type="checkbox" name="auto_download" {% if opts.auto_download|default_if_none:True %}checked{% endif %}> download the best match automatically (unticked: search only, report what was found)</label>
     {% endif %}

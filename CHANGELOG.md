@@ -10,9 +10,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Soulseek, ranks results (title match, format/bitrate, weighted toward free upload
   slots and short queues over marginal quality), and queues the best file for
   download -- or just reports it if "auto-download" is off. Verified against a live
-  slskd instance including a full search → download → cleanup round trip. Processes
-  up to 6 recommendations per push (each search takes several seconds) and skips
-  ones already queued from an earlier push.
+  slskd instance including a full search → download → cleanup round trip. A push
+  time-budgets ~100s and processes as many recommendations as fit (6 at the default
+  15s search timeout, fewer if raised) and skips ones already queued from an earlier
+  push.
+- Fixed immediately after first deploying the above: slskd's `GET .../responses`
+  returns nothing -- not partial results -- until a search reports itself complete,
+  and an unpopular query can run for slskd's own ~25-30s internal timeout, well past
+  our UI wait. Every recommendation came back "not found" against genuinely findable
+  tracks until this was caught. `PUT .../searches/{id}` now cancels a search early to
+  unlock whatever arrived so far; covered by a regression test.
 - Backfill: `sync_reddit --backfill N` (and a field on the Settings page's Sync
   form) pages N pages further back into each source's history using the archive
   backend's `before` cursor. Previously the sync only ever pulled the single most

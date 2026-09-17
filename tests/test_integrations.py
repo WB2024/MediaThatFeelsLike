@@ -195,6 +195,30 @@ def test_slskd_search_polls_until_complete_and_cleans_up(monkeypatch):
     assert ("DELETE", f"/api/v0/searches/{sid}") in [(m, p) for m, p, _ in calls]
 
 
+def test_slskd_search_cancels_early_when_deadline_hits_before_slskd_finishes(monkeypatch):
+    """Regression: slskd's GET .../responses returns [] -- not partial results -- until
+    the search itself reports isComplete. An obscure query can run for slskd's own
+    internal timeout (~25-30s observed live), well past a sane UI wait, so hitting our
+    own deadline first must PUT (cancel) the search to unlock whatever arrived so far --
+    otherwise every search that doesn't finish inside `max_wait` silently returns
+    nothing, which is exactly what happened live against real (findable) tracks."""
+    sid = fixed_uuid(monkeypatch)
+    c = SlskdClient(cfg("slskd"))
+    calls = stub(c, {
+        ("POST", "/api/v0/searches"): {"id": sid},
+        ("GET", f"/api/v0/searches/{sid}"): {"isComplete": False},  # never completes on its own
+        ("PUT", f"/api/v0/searches/{sid}"): None,
+        ("GET", f"/api/v0/searches/{sid}/responses"): MAZZY_STAR_RESPONSES,
+        ("DELETE", f"/api/v0/searches/{sid}"): None,
+    })
+    responses = c.search("Mazzy Star Fade Into You", max_wait=0.05, poll_interval=0.01)
+    assert responses == MAZZY_STAR_RESPONSES
+    methods = [(m, p) for m, p, _ in calls]
+    assert ("PUT", f"/api/v0/searches/{sid}") in methods
+    # PUT (cancel) must happen before fetching responses, not after.
+    assert methods.index(("PUT", f"/api/v0/searches/{sid}")) < methods.index(("GET", f"/api/v0/searches/{sid}/responses"))
+
+
 def test_slskd_find_best_prefers_free_slot_and_rejects_bad_matches(monkeypatch):
     sid = fixed_uuid(monkeypatch)
     c = SlskdClient(cfg("slskd"))
@@ -308,3 +332,14 @@ def test_push_slskd_caps_batch_size_and_skips_already_queued(db):
     assert recs[0].parsed_title not in processed_titles
     recs[0].refresh_from_db()
     assert recs[0].integration_state["slskd"]["detail"] == "already got this one"  # untouched, not re-pushed
+
+
+def test_slskd_batch_size_shrinks_as_search_timeout_grows():
+    """A longer configured search timeout must not let a batch exceed the gunicorn
+    worker timeout -- the batch shrinks to compensate rather than staying fixed."""
+    from integrations.push import SLSKD_MAX_PER_PUSH, _slskd_batch_size
+
+    assert _slskd_batch_size(15) == SLSKD_MAX_PER_PUSH  # default: fits the normal cap
+    assert _slskd_batch_size(25) * 25 <= 100
+    assert _slskd_batch_size(25) < SLSKD_MAX_PER_PUSH
+    assert _slskd_batch_size(1000) == 1  # never zero, however extreme the timeout

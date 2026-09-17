@@ -201,15 +201,24 @@ action), and all read their connection details from `ServiceConfig`.
   poll `GET /api/v0/searches/{id}` until complete or a configurable timeout (default 15s)
   elapses, rank the file results, then `POST /api/v0/transfers/downloads/{username}` for
   the winner (or just report it, if "auto-download" is turned off on the Settings page).
-  Ranking favours availability over a marginal quality gain -- a peer with no free
-  upload slot and a long queue may take hours or never finish if they go offline, so
-  `hasFreeUploadSlot` and `queueLength` are weighted more heavily than format/bitrate,
-  after a similarity + extension + length filter rules out non-audio files and obvious
-  mismatches. Verified directly against a live slskd 0.26 instance, including a real
-  search → download → cleanup round trip. Because a search can take several seconds,
-  a single push processes at most `SLSKD_MAX_PER_PUSH` (6) recommendations and skips
-  ones already queued from an earlier push, so working through a long list is a few
-  clicks rather than one request that risks the gunicorn worker timeout.
+  **Non-obvious API behaviour, found by testing live rather than guessing**:
+  `GET .../responses` returns `[]` -- not partial results -- until the search itself
+  reports `isComplete`, and an unpopular query can run for slskd's own internal timeout
+  (~25-30s observed) well past a sane UI wait. `PUT .../searches/{id}` cancels a search
+  early *and* marks it complete, unlocking whatever arrived so far; without this, every
+  search that doesn't finish inside our own timeout silently returns nothing, which is
+  exactly what happened on first deploy against genuinely findable tracks (fixed and
+  covered by a regression test). Ranking favours availability over a marginal quality
+  gain -- a peer with no free upload slot and a long queue may take hours or never
+  finish if they go offline, so `hasFreeUploadSlot` and `queueLength` are weighted more
+  heavily than format/bitrate, after a similarity + extension + length filter rules out
+  non-audio files and obvious mismatches. Soulseek is a live P2P network, so result
+  counts genuinely vary run to run for the same query -- that variability is expected,
+  not a bug. Because a search can take several seconds, a single push time-budgets
+  ~100s and processes only as many recommendations as fit (`SLSKD_MAX_PER_PUSH`, 6 at
+  the default 15s timeout, fewer if the timeout is raised) and skips ones already
+  queued from an earlier push, so working through a long list is a few clicks rather
+  than one request that risks the gunicorn worker timeout.
 
 Every integration action returns a per-item result (added / already existed / not found /
 error) rather than a single pass/fail for the whole batch — with a curated list of maybe

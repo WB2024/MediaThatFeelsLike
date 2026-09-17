@@ -122,13 +122,17 @@ Subreddits are managed on the Settings page too (add more sources to either sect
   waits for Lidarr's refresh and re-monitors it.
 - **Jellyfin** / **Navidrome**: each recommendation is fuzzy-matched against the library;
   the ones found go into a new playlist, the rest are listed as "not in the library".
-- **slskd**: searches Soulseek (waits up to a configurable timeout, default 15s), picks
-  the best audio file by title match + format/bitrate, weighted toward peers with a free
-  upload slot and a short queue (a "better" file behind 100 people in line may never
-  actually arrive). Downloads the winner automatically unless "auto-download" is turned
-  off on the Settings page, in which case it just reports what it found. A push handles
-  up to 6 recommendations at a time (each search takes a few seconds) — press the button
-  again to work through a longer list; anything already queued is skipped automatically.
+- **slskd**: searches Soulseek (waits up to a configurable timeout, default 15s, before
+  cancelling the search early to collect whatever's arrived so far), picks the best
+  audio file by title match + format/bitrate, weighted toward peers with a free upload
+  slot and a short queue (a "better" file behind 100 people in line may never actually
+  arrive). Downloads the winner automatically unless "auto-download" is turned off on
+  the Settings page, in which case it just reports what it found. A push handles up to
+  6 recommendations at a time by default (each search takes several seconds) — fewer if
+  you raise the search timeout, so a batch can never outrun the server's request
+  timeout. Press the button again to work through a longer list; anything already
+  queued is skipped automatically. Soulseek is a P2P network, so results genuinely vary
+  run to run — some tracks return hundreds of candidates in seconds, others none at all.
 
 ## Status
 
