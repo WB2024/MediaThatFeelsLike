@@ -167,6 +167,28 @@ def _disk(free_gb):
     return lambda path: SimpleNamespace(free=free_gb * 1024**3)
 
 
+def test_disk_check_looks_at_media_root_not_data_dir(source, settings, monkeypatch):
+    """Regression: images can be pointed at separate storage from the sqlite DB via
+    MEDIA_DATA_DIR (e.g. an NFS drive with plenty of room, while the LXC's own disk is
+    tight). The disk floor has to check wherever images actually get written, not
+    wherever DATA_DIR happens to be, or a deployment that split the two would get
+    warnings based on the wrong filesystem's free space."""
+    settings.DATA_DIR = "/data-is-tight"
+    settings.MEDIA_ROOT = "/media-has-room"
+    seen_paths = []
+
+    def disk_usage(path):
+        from types import SimpleNamespace
+
+        seen_paths.append(str(path))
+        return SimpleNamespace(free=20 * 1024**3)
+
+    monkeypatch.setattr("reddit_sync.sync.shutil.disk_usage", disk_usage)
+    run = SyncRun.objects.create()
+    Syncer(run, client=FakeClient([], {}), cacher=FakeCacher(), cache_images=True).cache_images()
+    assert seen_paths == ["/media-has-room"]
+
+
 def test_image_caching_stops_below_the_disk_floor(source, settings, monkeypatch):
     from django.utils import timezone
 

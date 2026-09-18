@@ -324,18 +324,34 @@ MediaThatFeelsLike/
 
 `Dockerfile` + `compose.yaml`: an `app` service (gunicorn, 2 workers x 4 threads, port
 8095 on the host) and a `sync` sidecar sharing the same image and the `./data` volume
-(sqlite database + cached images). There is no login -- the app is LAN-only, like Glance
-and Homepage in this homelab; service credentials are encrypted at rest, never rendered
-back into the browser, and the Django admin (which does have a login) hides them too.
+(sqlite database + cached images by default). There is no login -- the app is LAN-only,
+like Glance and Homepage in this homelab; service credentials are encrypted at rest,
+never rendered back into the browser, and the Django admin (which does have a login)
+hides them too.
 
 `DJANGO_ALLOWED_HOSTS` must list the LAN IP / hostname the app is reached on.
+
+**Splitting media cache storage from the DB.** Cached images are comfortably the
+largest and fastest-growing thing this app stores (a deep `--backfill` on these
+high-volume subs can queue tens of thousands of them), so they don't have to live next
+to the sqlite DB. Set `MEDIA_DATA_DIR` (Django) / `MEDIA_HOST_PATH` (`compose.yaml`, the
+host-side path bind-mounted to `/media-cache` in both containers) to point them at
+different, larger, and likely slower storage instead -- a network/NFS-attached drive
+shared with the rest of the media library, for instance. `Syncer._disk_has_room()`
+checks whichever filesystem `MEDIA_ROOT` actually resolves to, so the disk-safety floor
+(`MIN_FREE_DISK_GB`) stays correct either way. Moving an *existing* cache means copying
+`./data/media`'s contents to the new location yourself before switching
+`MEDIA_HOST_PATH` and recreating the containers -- nothing does that automatically, and
+nothing breaks if you don't (uncached images just fall back to hotlinking Reddit's CDN
+per `PostImage.display_url`, same as any other uncached image).
 
 **Deployed** at `/opt/mediathatfeelslike` on the services LXC (`192.168.1.110:8095`),
 pulling `wb20244/mediathatfeelslike` from Docker Hub rather than building on that LXC's
 disk (it runs tight on space -- check `df -h /` before building there again). Not yet
-behind Nginx Proxy Manager. Listed on the Glance dashboard's Media page as its own
-`monitor` tile (**not** the "More" tile next to it -- that one is reserved for
-NSFW-adjacent tools under a deliberately unobvious name).
+behind Nginx Proxy Manager. On the Glance dashboard's Media page: a stats tile plus
+"MediaThatFeelsLike · Movies"/"· Music" image-strip widgets (see "Glance dashboard
+widget" above) -- not the "More" tile nearby, which is reserved for NSFW-adjacent tools
+under a deliberately unobvious name.
 
 Image build/push doesn't need Docker on the dev box: `git archive` the committed tree,
 `pscp` it to the LXC (which already runs Docker for the other services and already had a

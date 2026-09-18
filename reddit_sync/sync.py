@@ -342,12 +342,17 @@ class Syncer:
         comments are KB-scale DB rows -- so it's the one place that needs a hard floor,
         checked every run rather than trusting a one-off "this depth should be safe"
         estimate. Below the floor: skip caching, log once per run, keep everything else
-        (listings, comments, recommendations) working as normal."""
-        free_gb = shutil.disk_usage(settings.DATA_DIR).free / (1024**3)
+        (listings, comments, recommendations) working as normal.
+
+        Checks MEDIA_ROOT's filesystem specifically, not DATA_DIR's -- images can be
+        pointed at separate (e.g. NFS-backed) storage via MEDIA_DATA_DIR, and it's that
+        mount's headroom that actually matters here, not the one holding the sqlite DB.
+        """
+        free_gb = shutil.disk_usage(settings.MEDIA_ROOT).free / (1024**3)
         if free_gb < settings.MIN_FREE_DISK_GB:
             self.log(
-                f"skipping image caching: {free_gb:.1f}GB free on disk, below the {settings.MIN_FREE_DISK_GB}GB floor "
-                f"(MIN_FREE_DISK_GB) -- free up space or lower fetch_limit/backfill depth",
+                f"skipping image caching: {free_gb:.1f}GB free under MEDIA_ROOT, below the {settings.MIN_FREE_DISK_GB}GB "
+                f"floor (MIN_FREE_DISK_GB) -- free up space or lower fetch_limit/backfill depth",
                 logging.WARNING,
             )
             return False

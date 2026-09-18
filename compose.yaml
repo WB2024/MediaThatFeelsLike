@@ -3,6 +3,16 @@
 #   docker compose up -d --build  # builds from the local Dockerfile instead
 # The web app is on port 8095 (change the left-hand side to suit); point Nginx Proxy
 # Manager at it if you want a hostname. There is no login -- keep it on the LAN.
+#
+# Cached post images (by far the largest, fastest-growing thing this app stores) can
+# live on different storage than everything else -- e.g. a large, slower NFS/network
+# drive -- by setting MEDIA_HOST_PATH in .env to that host path (an absolute path, or
+# anything `docker compose` can resolve relative to this file) before first bringing
+# the stack up. Left unset, it defaults to ./data/media, i.e. no change from storing
+# it alongside the sqlite DB. Changing it after images already exist doesn't move
+# them -- copy ./data/media's contents to the new location yourself first if you want
+# to keep what's already cached, or just let the sync re-cache into the new location
+# over time (nothing is lost either way; see PostImage.display_url's CDN fallback).
 
 services:
   app:
@@ -12,8 +22,10 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /data
+      MEDIA_DATA_DIR: /media-cache
     volumes:
       - ./data:/data
+      - ${MEDIA_HOST_PATH:-./data/media}:/media-cache
     ports:
       - "8095:8000"
     restart: unless-stopped
@@ -25,10 +37,12 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /data
+      MEDIA_DATA_DIR: /media-cache
       SYNC_INTERVAL: "1800"       # seconds between syncs
       SYNC_MAX_COMMENTS: "40"     # comment threads fetched per sync
     volumes:
       - ./data:/data
+      - ${MEDIA_HOST_PATH:-./data/media}:/media-cache
     entrypoint: ["/app/docker/sync-loop.sh"]
     # The image's HEALTHCHECK assumes the web server is running; this container is a
     # headless loop with no HTTP port, so that check can never pass -- disable it

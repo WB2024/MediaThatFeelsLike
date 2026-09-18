@@ -107,14 +107,23 @@ Everything is in `.env` (see `.env.example` for every key):
   `JELLYFIN_API_KEY`, `NAVIDROME_URL` / `NAVIDROME_USERNAME` / `NAVIDROME_PASSWORD`,
   `SLSKD_URL` / `SLSKD_API_KEY` — only used to seed the Settings page on first run; the
   Settings page is the source of truth afterwards
+- `MEDIA_DATA_DIR` — where cached post images live. Leave unset for a `media`
+  subfolder next to the sqlite DB. Images are by far the largest and fastest-growing
+  thing this app stores, so point this at different (e.g. larger, network-attached)
+  storage if that suits your setup better; in Docker, set `MEDIA_HOST_PATH` in `.env`
+  instead (see `compose.yaml`'s comments) — that's the host-side path, bind-mounted
+  into both containers, that this variable then points at from inside them
 - `MIN_FREE_DISK_GB` (default 2.0) — image caching pauses (with a warning in the sync
-  log) once free disk space drops below this; everything else keeps working
+  log) once free space under `MEDIA_DATA_DIR` (or wherever it defaults to) drops below
+  this; everything else keeps working
 
 Subreddits are managed on the Settings page too (add more sources to either section).
 `--backfill N` (CLI or the Settings page's Sync form) pages further back into a
-source's history — these two subs are high-volume enough that even a fairly deep
-backfill only covers a week or two, so "as far back as possible" is realistically
-bounded by disk space (see `MIN_FREE_DISK_GB` above) rather than by the archive itself.
+source's history — these subs turned out to be high-volume enough that even a
+60-page backfill (100 posts/page) only reached a few months back for one and fully
+exhausted six years of archive for the other, so "as far back as possible" ends up
+bounded by disk space, not by how deep the archive actually goes. `MIN_FREE_DISK_GB`
+and `MEDIA_DATA_DIR` above are the two knobs for that.
 
 ## Notes on the integrations
 

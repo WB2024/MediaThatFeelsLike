@@ -37,6 +37,7 @@ env = environ.Env(
     SLSKD_URL=(str, ""),
     SLSKD_API_KEY=(str, ""),
     DATA_DIR=(str, ""),
+    MEDIA_DATA_DIR=(str, ""),
     MIN_FREE_DISK_GB=(float, 2.0),
 )
 environ.Env.read_env(BASE_DIR / ".env")
@@ -127,10 +128,17 @@ STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
-# Cached copies of Reddit post images (so the tile grid doesn't hotlink Reddit's CDN,
-# which is slow, rate-limited and occasionally blocks referers).
+# Cached copies of Reddit post images (so the tile grid doesn't have to rely on
+# hotlinking Reddit's CDN, which is slow, rate-limited and occasionally blocks
+# referers -- it's still used as a fallback when nothing's cached yet, see
+# PostImage.display_url). This is comfortably the largest and fastest-growing thing
+# this app stores, so it can live on different storage than the sqlite DB -- e.g. a
+# large, slower NFS/network-attached drive shared with the rest of the media library --
+# by setting MEDIA_DATA_DIR to an absolute path. Left unset, it's a subfolder of
+# DATA_DIR as before.
 MEDIA_URL = "media/"
-MEDIA_ROOT = DATA_DIR / "media"
+MEDIA_ROOT = Path(env("MEDIA_DATA_DIR")) if env("MEDIA_DATA_DIR") else DATA_DIR / "media"
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

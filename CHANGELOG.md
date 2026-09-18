@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Configurable media cache location**: `MEDIA_DATA_DIR` (Django) / `MEDIA_HOST_PATH`
+  (`compose.yaml`) let cached images live on different storage than the sqlite DB --
+  e.g. a large, slower NFS/network drive -- instead of always being a subfolder of
+  `DATA_DIR`. Fixed `Syncer._disk_has_room()` to check whichever filesystem
+  `MEDIA_ROOT` actually resolves to rather than always `DATA_DIR`, which the disk-floor
+  feature below would otherwise have gotten wrong the moment the two diverged.
 - **Disk safety floor for image caching**: `MIN_FREE_DISK_GB` (default 2.0) -- these
   subreddits are high-volume enough that a deep `--backfill` can create far more
   pending images than fit on a shared homelab disk. `cache_images()` now checks free
