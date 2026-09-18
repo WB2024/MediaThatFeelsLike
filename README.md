@@ -107,8 +107,14 @@ Everything is in `.env` (see `.env.example` for every key):
   `JELLYFIN_API_KEY`, `NAVIDROME_URL` / `NAVIDROME_USERNAME` / `NAVIDROME_PASSWORD`,
   `SLSKD_URL` / `SLSKD_API_KEY` — only used to seed the Settings page on first run; the
   Settings page is the source of truth afterwards
+- `MIN_FREE_DISK_GB` (default 2.0) — image caching pauses (with a warning in the sync
+  log) once free disk space drops below this; everything else keeps working
 
 Subreddits are managed on the Settings page too (add more sources to either section).
+`--backfill N` (CLI or the Settings page's Sync form) pages further back into a
+source's history — these two subs are high-volume enough that even a fairly deep
+backfill only covers a week or two, so "as far back as possible" is realistically
+bounded by disk space (see `MIN_FREE_DISK_GB` above) rather than by the archive itself.
 
 ## Notes on the integrations
 

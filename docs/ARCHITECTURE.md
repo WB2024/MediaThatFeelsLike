@@ -109,8 +109,22 @@ Per run, per enabled `Source`:
    rebuild its `Recommendation` rows -- preserving rows a human has edited or pushed to a
    service, and manual additions.
 5. Download any uncached images to `MEDIA_ROOT` and write a 640px JPEG thumbnail for
-   the grid (the tile grid never hotlinks Reddit's CDN). Posts whose images have all
-   vanished are hidden.
+   the grid, up to `limit` (200) per run and only while `Syncer._disk_has_room()` says
+   there's headroom (see below). `PostImage.display_url` falls back to the original
+   Reddit CDN URL when nothing's cached yet, which is what makes it safe to throttle
+   caching under disk pressure without the grid going blank. Posts whose images have
+   all vanished are hidden.
+
+**Disk safety.** These subreddits are high-volume enough that a deep `--backfill` can
+create far more pending images than fit on a shared homelab disk -- listings and
+comments are KB-scale DB rows, but cached images are the one part of this pipeline with
+real disk impact. `cache_images()` checks free space under `DATA_DIR` before starting
+and again every 40 successful caches within a run (a single run can be asked to cache
+up to `limit` images, so a big backlog needs a mid-run recheck, not just a check at the
+top), and skips the rest of that run's caching (logging a warning) once free space drops
+below `MIN_FREE_DISK_GB` (default 2.0). Everything else in the sync keeps working
+regardless -- new posts, comments and recommendations still land, and the grid still
+shows something for every post via the CDN fallback above; only local caching pauses.
 
 Every run is recorded as a `SyncRun` (counts, request total, log, blocked flag). A
 running `SyncRun` acts as the lock against overlapping runs; a run stuck for over two

@@ -150,3 +150,74 @@ def test_backfill_skipped_for_a_backend_that_doesnt_support_it(source):
     assert run.posts_new == 1
     assert "backfill skipped" in run.log
     assert client.requests_made == 1  # never attempted a backfill request
+
+
+class FakeCacher:
+    """Marks every pending image as cached without touching the network or disk."""
+
+    def cache(self, image):
+        image.file.name = f"posts/{image.pk}.jpg"
+        image.save(update_fields=["file"])
+        return True
+
+
+def _disk(free_gb):
+    from types import SimpleNamespace
+
+    return lambda path: SimpleNamespace(free=free_gb * 1024**3)
+
+
+def test_image_caching_stops_below_the_disk_floor(source, settings, monkeypatch):
+    from django.utils import timezone
+
+    from vibes.models import PostImage
+
+    post = Post.objects.create(source=source, reddit_id="p1", title="t", permalink="/x/", created_utc=timezone.now())
+    image = PostImage.objects.create(post=post, order=0, source_url="https://example.test/x.jpg")
+
+    settings.MIN_FREE_DISK_GB = 5.0
+    monkeypatch.setattr("reddit_sync.sync.shutil.disk_usage", _disk(1))  # below the 5GB floor
+
+    run = SyncRun.objects.create()
+    syncer = Syncer(run, client=FakeClient([], {}), cacher=FakeCacher(), cache_images=True)
+    syncer.cache_images()
+    image.refresh_from_db()
+    assert image.file == ""  # nothing cached
+    assert "skipping image caching" in run.log and "1.0GB free" in run.log
+
+    monkeypatch.setattr("reddit_sync.sync.shutil.disk_usage", _disk(20))  # comfortably above it
+    syncer.cache_images()
+    image.refresh_from_db()
+    assert image.file != ""  # now it proceeds normally
+
+
+def test_disk_floor_is_rechecked_partway_through_a_large_backlog(source, settings, monkeypatch):
+    """A single run can be asked to cache up to `limit` images; if the backlog is big
+    enough that caching them all would blow through the floor, a run must notice partway
+    through rather than only checking once at the start."""
+    from django.utils import timezone
+
+    from vibes.models import PostImage
+
+    post = Post.objects.create(source=source, reddit_id="p1", title="t", permalink="/x/", created_utc=timezone.now())
+    images = [PostImage.objects.create(post=post, order=i, source_url=f"https://example.test/{i}.jpg") for i in range(45)]
+
+    settings.MIN_FREE_DISK_GB = 5.0
+    calls = {"n": 0}
+
+    def disk_usage(path):
+        from types import SimpleNamespace
+
+        calls["n"] += 1
+        # Plenty of room at first; drops below the floor once the run checks again
+        # partway through (cache_images re-checks every 40 successfully cached images).
+        return SimpleNamespace(free=(20 if calls["n"] <= 1 else 1) * 1024**3)
+
+    monkeypatch.setattr("reddit_sync.sync.shutil.disk_usage", disk_usage)
+    run = SyncRun.objects.create()
+    syncer = Syncer(run, client=FakeClient([], {}), cacher=FakeCacher(), cache_images=True)
+    syncer.cache_images(limit=45)
+
+    cached = sum(1 for i in images if PostImage.objects.get(pk=i.pk).file)
+    assert 0 < cached < 45  # stopped partway through, not all 45
+    assert "skipping image caching" in run.log

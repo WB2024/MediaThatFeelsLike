@@ -37,6 +37,7 @@ env = environ.Env(
     SLSKD_URL=(str, ""),
     SLSKD_API_KEY=(str, ""),
     DATA_DIR=(str, ""),
+    MIN_FREE_DISK_GB=(float, 2.0),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -160,6 +161,12 @@ REDDIT_REQUEST_TIMEOUT = 20
 # consecutive blocked run, capped at REDDIT_BLOCK_COOLDOWN_MAX).
 REDDIT_BLOCK_COOLDOWN = 30 * 60
 REDDIT_BLOCK_COOLDOWN_MAX = 6 * 3600
+
+# Image caching stops (with a warning in the sync log) once free disk space under
+# DATA_DIR drops below this. These subreddits are high-volume enough that a deep
+# backfill can genuinely fill a shared homelab disk if left unchecked -- see
+# reddit_sync/sync.py's Syncer._disk_has_room.
+MIN_FREE_DISK_GB = env("MIN_FREE_DISK_GB")
 
 # First-run defaults for the Settings page; the DB copy is the source of truth after that.
 SERVICE_ENV_DEFAULTS = {

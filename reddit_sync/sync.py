@@ -8,10 +8,12 @@ cap exists rather than trying to catch everything up at once.
 """
 
 import logging
+import shutil
 import threading
 import traceback
 
 from django import db
+from django.conf import settings
 from django.utils import timezone
 
 from vibes.models import Post, PostImage, Recommendation, Source
@@ -316,6 +318,8 @@ class Syncer:
     # -- images -----------------------------------------------------------------------
 
     def cache_images(self, limit=200):
+        if not self._disk_has_room():
+            return
         pending = PostImage.objects.filter(file="", cache_failed=False, post__hidden=False).select_related("post")[:limit]
         count = 0
         for image in pending:
@@ -324,10 +328,30 @@ class Syncer:
                 self.run.images_cached += 1
                 if count % 10 == 0:
                     self._save_counts()
+                    if count % 40 == 0 and not self._disk_has_room():
+                        break  # re-check partway through a big backlog, not just at the start
         if count:
             self.log(f"cached {count} images")
         self._save_counts()
         self.hide_imageless()
+
+    def _disk_has_room(self):
+        """A backfill can create far more pending images than fit on disk (these subs
+        are high-volume; a deep backfill has genuinely filled a homelab disk before).
+        This is the one part of the pipeline with real disk impact -- listings and
+        comments are KB-scale DB rows -- so it's the one place that needs a hard floor,
+        checked every run rather than trusting a one-off "this depth should be safe"
+        estimate. Below the floor: skip caching, log once per run, keep everything else
+        (listings, comments, recommendations) working as normal."""
+        free_gb = shutil.disk_usage(settings.DATA_DIR).free / (1024**3)
+        if free_gb < settings.MIN_FREE_DISK_GB:
+            self.log(
+                f"skipping image caching: {free_gb:.1f}GB free on disk, below the {settings.MIN_FREE_DISK_GB}GB floor "
+                f"(MIN_FREE_DISK_GB) -- free up space or lower fetch_limit/backfill depth",
+                logging.WARNING,
+            )
+            return False
+        return True
 
     def hide_imageless(self):
         """A post whose every image failed to download was almost certainly deleted on

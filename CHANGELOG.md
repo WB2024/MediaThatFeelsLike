@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Disk safety floor for image caching**: `MIN_FREE_DISK_GB` (default 2.0) -- these
+  subreddits are high-volume enough that a deep `--backfill` can create far more
+  pending images than fit on a shared homelab disk. `cache_images()` now checks free
+  space before starting and again every 40 successful caches within a run, skipping the
+  rest of that run's caching (with a warning in the sync log) once the floor is hit.
+  Everything else (listings, comments, recommendations) keeps working regardless, and
+  the grid still shows something for every post via `PostImage.display_url`'s existing
+  fallback to the original Reddit CDN URL.
 - **Glance dashboard widget**: a small JSON API (`vibes/api.py` -- `/api/hot/<kind>/`,
   `/api/stats/`) backs a proper image-strip widget on the homelab dashboard (hottest
   posts per section, plus a stats tile) instead of a bare status tile.
