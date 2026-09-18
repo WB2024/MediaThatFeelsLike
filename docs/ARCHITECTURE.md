@@ -14,9 +14,10 @@ Two mood-board sections, each backed by one subreddit:
 | Movies | r/MoviesThatFeelLike |
 | Music  | r/SongsThatFeelLikeThis |
 
-Flow: tile grid of post images → click a tile → **vibe detail page** (image at top, then
-a cleaned list of recommendations pulled from that post's comments) → export the list or
-push it into Radarr/Lidarr/Jellyfin/Navidrome.
+Flow: tile grid of post images (galleries can be flicked through right on the tile, via
+prev/next arrows, before committing to a click) → click a tile → **vibe detail page**
+(image at top, then a cleaned list of recommendations pulled from that post's comments)
+→ export the list or push it into Radarr/Lidarr/Jellyfin/Navidrome.
 
 ## Why Django over Flask
 

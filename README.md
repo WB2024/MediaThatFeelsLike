@@ -13,10 +13,11 @@ source of curated, vibe-matched discovery — but it's stuck in Reddit's UI, mix
 noise, and impossible to act on directly.
 
 MediaThatFeelsLike pulls posts from both subs and presents them as two sections,
-**Movies** and **Music**, each a mood-board grid of the post images. Clicking a tile opens
-the **vibe page**: the image(s) at the top, and a cleaned-up list of recommendations
-parsed out of the comments — with the source comment one click away, tick-boxes to curate
-the list, inline editing, and manual additions.
+**Movies** and **Music**, each a mood-board grid of the post images — hover a tile with
+more than one image and prev/next arrows let you flick through the gallery right there.
+Clicking a tile opens the **vibe page**: the image(s) at the top, and a cleaned-up list
+of recommendations parsed out of the comments — with the source comment one click away,
+tick-boxes to curate the list, inline editing, and manual additions.
 
 From there:
 

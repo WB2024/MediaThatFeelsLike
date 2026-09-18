@@ -1,14 +1,19 @@
 {% if page.number == 1 %}<div class="tiles" id="tiles">{% endif %}
 {% for post in page %}
-  {% with img=post.primary_image %}
-  <a class="tile" href="{{ post.get_absolute_url }}" title="{{ post.title }}">
-    {% if img %}
-      <img src="{{ img.display_url }}" alt="" loading="lazy" {% if img.width and img.height %}width="{{ img.width }}" height="{{ img.height }}"{% endif %}>
+  {% with imgs=post.images.all count=post.images.all|length %}
+  <a class="tile" href="{{ post.get_absolute_url }}" title="{{ post.title }}"
+     {% if count > 1 %}data-images="{% for i in imgs %}{{ i.display_url }}{% if not forloop.last %}|{% endif %}{% endfor %}"{% endif %}>
+    {% if imgs %}
+      <img class="tile-img" src="{{ imgs.0.display_url }}" alt="" loading="lazy" {% if imgs.0.width and imgs.0.height %}width="{{ imgs.0.width }}" height="{{ imgs.0.height }}"{% endif %}>
     {% else %}
       <div class="ph">{{ post.title|truncatechars:90 }}</div>
     {% endif %}
+    {% if count > 1 %}
+      <button type="button" class="tile-nav prev" onclick="return mtflCycleTile(event, this, -1)" aria-label="Previous image">‹</button>
+      <button type="button" class="tile-nav next" onclick="return mtflCycleTile(event, this, 1)" aria-label="Next image">›</button>
+    {% endif %}
     <span class="badge {% if not post.rec_count %}zero{% endif %}">{{ post.rec_count }} rec{{ post.rec_count|pluralize }}</span>
-    {% if post.is_gallery and post.images.all|length > 1 %}<span class="gal">{{ post.images.all|length }} images</span>{% endif %}
+    {% if count > 1 %}<span class="gal">1 / {{ count }}</span>{% endif %}
     <div class="meta">
       <div class="t">{{ post.title }}</div>
       <div class="s"><span>▲ {{ post.score }}</span><span>💬 {{ post.num_comments }}</span><span>{{ post.created_utc|timesince|truncatewords:2 }} ago</span></div>

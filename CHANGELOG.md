@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Gallery cycling on the tile grid**: posts with more than one image get prev/next
+  arrows right on the tile (hover to reveal), so you can flick through a gallery's
+  photos before deciding whether to open the post at all -- previously that was only
+  possible on the detail page. A single lightweight `static/js/app.js` (the app's first
+  standalone script) swaps the tile's `<img>` and a repurposed "N / total" counter;
+  clicking the tile itself still opens the detail page as before. Image URLs for a
+  gallery are embedded on the tile as a pipe-delimited `data-images` attribute rather
+  than one `<img>` per photo, so a big gallery's other images still aren't fetched until
+  you actually cycle to them.
 - **Configurable media cache location**: `MEDIA_DATA_DIR` (Django) / `MEDIA_HOST_PATH`
   (`compose.yaml`) let cached images live on different storage than the sqlite DB --
   e.g. a large, slower NFS/network drive -- instead of always being a subfolder of

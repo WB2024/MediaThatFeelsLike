@@ -25,6 +25,20 @@ def test_section_and_detail_render(client, post):
     assert b"1 excluded" in r.content
 
 
+def test_tile_grid_gallery_cycling_markup(client, post):
+    from vibes.models import PostImage
+
+    r = client.get(reverse("vibes:section", args=["music"]))
+    assert b"data-images=" not in r.content and b"tile-nav" not in r.content  # single/no image: nothing to cycle
+
+    PostImage.objects.create(post=post, order=0, source_url="https://example.test/a.jpg")
+    PostImage.objects.create(post=post, order=1, source_url="https://example.test/b.jpg")
+    r = client.get(reverse("vibes:section", args=["music"]))
+    assert b'data-images="https://example.test/a.jpg|https://example.test/b.jpg"' in r.content
+    assert b"tile-nav prev" in r.content and b"tile-nav next" in r.content
+    assert b'class="gal">1 / 2</span>' in r.content
+
+
 def test_unknown_section_404(client, db):
     assert client.get("/nope/").status_code == 404
 
