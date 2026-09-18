@@ -342,6 +342,72 @@ def test_slskd_test_reports_connection_state():
     assert "not connected" in c.test()
 
 
+def _peer(username, directory, files):
+    return {"username": username, "directories": [{"directory": directory, "files": files}]}
+
+
+def _file(state, size=1000, transferred=0, speed=0):
+    return {"state": state, "size": size, "bytesTransferred": transferred, "averageSpeed": speed}
+
+
+def test_slskd_summarize_counts_are_per_file():
+    from integrations.api import summarize
+
+    transfers = [
+        _peer("a", r"Music\Album One", [_file("InProgress", transferred=500, speed=1024), _file("Queued, Remotely")]),
+        _peer("b", r"Music\Album Two", [_file("Completed, Succeeded", transferred=1000), _file("Completed, Rejected")]),
+    ]
+    out = summarize(transfers)
+    assert out["counts"] == {"downloading": 1, "queued": 1, "completed": 1, "failed": 1}
+
+
+def test_slskd_summarize_groups_active_by_peer_and_directory():
+    from integrations.api import summarize
+
+    # A big multi-file grab, half done, still going -- must collapse to one row, not many.
+    files = [_file("Completed, Succeeded", size=1000, transferred=1000) for _ in range(75)]
+    files += [_file("Queued, Remotely", size=1000) for _ in range(75)]
+    transfers = [_peer("Tymemage", r"Music\Buddy Holly\Not Fade Away", files)]
+    out = summarize(transfers)
+    assert len(out["active"]) == 1
+    assert out["active"][0]["label"] == "Tymemage · Not Fade Away"
+    assert out["active"][0]["percent"] == 50
+
+
+def test_slskd_summarize_excludes_fully_resolved_directories():
+    from integrations.api import summarize
+
+    transfers = [
+        _peer("a", r"Music\Done Album", [_file("Completed, Succeeded", transferred=1000)]),
+        _peer("b", r"Music\Dead Album", [_file("Completed, Rejected")]),
+    ]
+    out = summarize(transfers)
+    assert out["active"] == []  # nothing left to show progress on -- everything's resolved
+
+
+def test_slskd_summarize_sorts_active_by_percent_and_caps_the_list():
+    from integrations.api import ACTIVE_LIMIT, summarize
+
+    transfers = [
+        _peer(f"user{i}", f"Music\\Album {i}", [_file("InProgress", size=100, transferred=i)])
+        for i in range(ACTIVE_LIMIT + 3)
+    ]
+    out = summarize(transfers)
+    assert len(out["active"]) == ACTIVE_LIMIT
+    percents = [a["percent"] for a in out["active"]]
+    assert percents == sorted(percents, reverse=True)
+
+
+def test_slskd_summarize_formats_speed_human_readable():
+    from integrations.api import summarize
+
+    transfers = [_peer("a", r"Music\Album", [_file("InProgress", size=100, transferred=1, speed=2_500_000)])]
+    out = summarize(transfers)
+    assert out["active"][0]["speed"] == "2.4 MB/s"
+    transfers = [_peer("a", r"Music\Album", [_file("Queued, Remotely", size=100)])]
+    assert summarize(transfers)["active"][0]["speed"] == ""
+
+
 def test_push_slskd_caps_batch_size_and_skips_already_queued(db):
 
     from integrations.push import SLSKD_MAX_PER_PUSH, _push_slskd

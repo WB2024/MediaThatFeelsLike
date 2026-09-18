@@ -299,6 +299,20 @@ connectivity-check `monitor` tile) plus two full-width image-strip widgets --
 for visibility. Both strips reuse `.wb-card`/`.wb-strip`, this homelab's shared
 custom-widget CSS also used by the Navidrome/Jellyfin strips on the same page.
 
+`integrations/api.py` is the same idea for slskd: the Media page already had a hand-built
+widget hitting slskd's own `/api/v0/transfers/downloads` directly from a Glance template
+(file-level DOWNLOADING/QUEUED/DONE/FAILED counts via nested `range`+`add`), but Soulseek
+groups activity by peer-then-directory-then-file, and template languages are a poor place
+to do that grouping -- a 150-track album grab would need to become one progress row, not
+150. `GET /integrations/api/slskd/` does the aggregation in Python instead: same
+per-file counts (unchanged, so the existing numbers on the dashboard don't move), plus an
+`active` list that collapses each (peer, directory) still in flight into one row with an
+overall percent (bytes transferred / bytes total across every file in that grab, not just
+the ones currently moving -- so a partially-succeeded, partially-queued album still shows
+sensible progress) and a human-readable speed. Reuses `integrations.push.client_for` for
+the same Fernet-stored URL/API key the Settings page already manages, rather than a
+separate credential (the existing widget used its own `${HOMEPAGE_VAR_SLSKD_KEY}`).
+
 ## App layout
 
 ```

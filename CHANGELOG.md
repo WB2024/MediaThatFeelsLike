@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **slskd Glance widget, upgraded**: `GET /integrations/api/slskd/` aggregates slskd's
+  own transfer list in Python (peer + directory groups, not raw per-file JSON) so the
+  Media page's slskd widget can show *what's actually downloading right now* -- a
+  progress percent and speed per album/grab -- instead of just the four running
+  DOWNLOADING/QUEUED/DONE/FAILED counts it had before. Counts are unchanged (still
+  per-file, computed the same way); the new `active` list is additive. 6 new tests.
 - **Gallery cycling on the tile grid**: posts with more than one image get prev/next
   arrows right on the tile (hover to reveal), so you can flick through a gallery's
   photos before deciding whether to open the post at all -- previously that was only

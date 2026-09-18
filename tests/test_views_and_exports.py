@@ -76,6 +76,31 @@ def test_api_stats(client, post):
     assert data == {"movies": 0, "music": 1, "recommendations": 1, "last_synced": None}
 
 
+def test_api_slskd_status_reports_not_configured(client, db):
+    data = client.get(reverse("integrations:api_slskd")).json()
+    assert data["connected"] is False and data["active"] == [] and "error" in data
+
+
+def test_api_slskd_status_summarizes_a_configured_client(client, db, monkeypatch):
+    from integrations import api as api_module
+
+    class FakeClient:
+        api = "/api/v0"
+
+        def get(self, path):
+            if path.endswith("/application"):
+                return {"version": {"current": "0.26.0"}, "server": {"isConnected": True}}
+            return [{"username": "flaggy12", "directories": [{"directory": r"Music\Specials", "files": [
+                {"state": "InProgress", "size": 100, "bytesTransferred": 40, "averageSpeed": 512},
+            ]}]}]
+
+    monkeypatch.setattr(api_module, "client_for", lambda service: FakeClient())
+    data = client.get(reverse("integrations:api_slskd")).json()
+    assert data["connected"] is True and data["version"] == "0.26.0"
+    assert data["counts"]["downloading"] == 1
+    assert data["active"] == [{"label": "flaggy12 · Specials", "percent": 40, "speed": "512 B/s"}]
+
+
 def test_htmx_toggle_and_edit(client, post):
     rec = post.recommendations.get(parsed_title="Fade Into You")
     r = client.post(reverse("vibes:rec_toggle", args=[rec.pk]), HTTP_HX_REQUEST="true")
