@@ -13,7 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   to decide which half of an "X - Y" is the artist, applies one orientation per comment
   (a single recognisable artist flips its sibling lines too) and no longer drops lines
   whose title starts like a sentence ("This kiss - Faith Hill") when the comment is
-  demonstrably "Title - Artist"; (2) the dedupe key is orientation-insensitive, so both
+  demonstrably "Title - Artist"; explicit markers -- quotes/emphasis around the title,
+  "Title by Artist" -- count as orientation evidence too, so re-parsing also repairs
+  rows an older parser got backwards from `"Aja" - Steely Dan`; (2) the dedupe key is
+  orientation-insensitive, so both
   spellings merge into one recommendation, a corrected row survives re-parsing, and an
   unverified row adopts the parser's orientation on re-parse once it has evidence;
   (3) MusicBrainz is the referee: `enrich.resolve_recording()` looks a pair up as stored
@@ -23,7 +26,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `verify_recommendations` command, which the sync sidecar runs after every sync
   (`SYNC_VERIFY_LIMIT`, default 100, paced at 2 s/request since MusicBrainz's 1 req/s
   limit is per IP and shared with the web container; a 503 gets one polite retry).
-  Migration `vibes 0002`. 14 new tests.
+  Migration `vibes 0002`. 15 new tests.
 
 ### Fixed
 

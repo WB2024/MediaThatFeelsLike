@@ -129,3 +129,13 @@ def test_dedupe_merges_both_spellings_and_keeps_the_oriented_one():
     merged = parser.dedupe([reversed_, oriented])
     assert len(merged) == 1
     assert (merged[0].artist, merged[0].title, merged[0].mention_count) == ("Sheryl Crow", "All I Wanna Do", 2)
+
+
+def test_explicit_markers_count_as_orientation_evidence():
+    # quotes mark the title; "by" names the artist -- no KnownArtist needed
+    for body in ('"Aja" - Steely Dan', "“Aja” – Steely Dan", "*Aja* by Steely Dan", "Aja by Steely Dan", 'Steely Dan - "Aja"'):
+        (c,) = parser.parse_comment(body, "music")
+        assert (c.artist, c.title, c.orientation) == ("Steely Dan", "Aja", 1), body
+    # ...and a quoted line settles the dash lines around it
+    cands = parser.parse_comment('Steely Dan - "Aja"\nDonald Fagen - New Frontier', "music")
+    assert titles(cands) == [("Steely Dan", "Aja", None), ("Donald Fagen", "New Frontier", None)] and [c.orientation for c in cands] == [1, 1]

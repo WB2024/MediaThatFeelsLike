@@ -147,7 +147,10 @@ class Candidate:
     # filled in by the caller / dedupe
     comment: dict = field(default_factory=dict)
     mention_count: int = 1
-    # for "X - Y" splits only: see orient(); used for the per-comment consistency vote
+    # Which half is the artist, and how sure: +1 the stored artist really is the artist
+    # (a known name, an explicit "by", quotes around the title), -1 the comment had them
+    # reversed and we swapped, 0 written order kept as a guess. See orient(); artist_title
+    # candidates' values feed the per-comment consistency vote.
     orientation: int = 0
 
     @property
@@ -432,10 +435,11 @@ def parse_comment(body, kind, comment_score=0, depth=0, known_artists=None):
             by = re.match(r"^\s*(?:by|from|-|–|—)\s+([A-Z][^.,;!\n]{1,60})", tail) if kind == "music" else None
             head = text[max(0, m.start() - 80): m.start()]
             before = re.search(r"([A-Z][^.,;!\n]{1,60}?)\s*(?:[-–—:]|'s)\s*$", head) if kind == "music" else None
+            # Quotes/emphasis mark the title, so these are oriented by the markup itself.
             if by:
-                add(span, artist=by.group(1), url=inherited_url, method="title_by_artist", confidence=0.85, snippet=m.group(0) + by.group(0))
+                add(span, artist=by.group(1), url=inherited_url, method="title_by_artist", confidence=0.85, snippet=m.group(0) + by.group(0), orientation=1)
             elif before:
-                add(span, artist=before.group(1), url=inherited_url, method="artist_title", confidence=0.8, snippet=before.group(0) + m.group(0))
+                add(span, artist=before.group(1), url=inherited_url, method="artist_title", confidence=0.8, snippet=before.group(0) + m.group(0), orientation=1)
             else:
                 add(span, url=inherited_url, method="quoted", confidence=0.75, snippet=m.group(0))
     plain = EMPH.sub(lambda m: m.group("t"), text)
@@ -551,7 +555,7 @@ def _parse_segment(seg, kind, is_item, whole_short, inherited_url, add, seen_spa
                     defer((piece, held, seg_year, inherited_url))
             by = split_title_by_artist(piece)
             if by:
-                add(by[1], artist=by[0], year=seg_year, url=inherited_url, method="title_by_artist", confidence=0.85, snippet=piece)
+                add(by[1], artist=by[0], year=seg_year, url=inherited_url, method="title_by_artist", confidence=0.85, snippet=piece, orientation=1)  # "by" is explicit
                 matched = True
         if matched:
             return
