@@ -1,4 +1,6 @@
 import contextlib
+import re
+from urllib.parse import unquote
 
 import pytest
 from django.core.files.base import ContentFile
@@ -6,6 +8,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from vibes.models import Post, Recommendation, Source
+
+
+def youtube_query(content):
+    m = re.search(rb"youtube\.com/results\?search_query=([^\"&]+)", content)
+    return unquote(m.group(1).decode()) if m else None
 
 
 @pytest.fixture
@@ -41,6 +48,19 @@ def test_tile_grid_gallery_cycling_markup(client, post):
 
 def test_unknown_section_404(client, db):
     assert client.get("/nope/").status_code == 404
+
+
+def test_youtube_links_search_the_song_or_the_trailer(client, post, db):
+    r = client.get(post.get_absolute_url())  # music fixture: Mazzy Star - Fade Into You
+    assert b"\xe2\x96\xb6 Play" in r.content and b"\xe2\x96\xb6 Trailer" not in r.content
+    assert youtube_query(r.content) == "Mazzy Star Fade Into You"
+
+    src = Source.objects.create(subreddit="MoviesThatFeelLike", kind=Source.Kind.MOVIES)
+    movie_post = Post.objects.create(source=src, reddit_id="mv1", title="movies that feel like this", permalink="/r/y/", created_utc=timezone.now())
+    Recommendation.objects.create(post=movie_post, parsed_title="Drive", parsed_year=2011, method="title_year", confidence=0.9, included=True, order=0)
+    r = client.get(movie_post.get_absolute_url())
+    assert b"\xe2\x96\xb6 Trailer" in r.content and b"\xe2\x96\xb6 Play" not in r.content
+    assert youtube_query(r.content) == "Drive (2011) trailer"
 
 
 def test_api_hot_only_lists_posts_with_a_cached_image(client, post):
@@ -191,6 +211,9 @@ def test_push_rec_updates_only_that_recommendations_chip(client, post, monkeypat
     monkeypatch.setattr(push_module, "client_for", lambda service: FakeSlskd())
     r = client.post(reverse("integrations:push_rec", args=[rec.pk, "slskd"]), HTTP_HX_REQUEST="true")
     assert r.status_code == 200 and b"slskd: queued" in r.content
+    # Regression: push_rec re-renders _rec_row.html directly (not via _rec_context), which
+    # must still pass `post` through -- the row's YouTube link depends on post.source.is_music.
+    assert b"\xe2\x96\xb6 Play" in r.content
     rec.refresh_from_db()
     other.refresh_from_db()
     assert rec.integration_state["slskd"]["status"] == "queued"

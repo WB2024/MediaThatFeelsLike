@@ -143,4 +143,4 @@ def push_rec(request, rec_pk, service):
     name = request.headers.get("HX-Prompt") or None
     push_one(rec, service, playlist_name=name)
     rec.refresh_from_db()
-    return render(request, "vibes/_rec_row.html", {"rec": rec, **service_flags(rec.post.source.kind)})
+    return render(request, "vibes/_rec_row.html", {"rec": rec, "post": rec.post, **service_flags(rec.post.source.kind)})

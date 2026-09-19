@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **YouTube trailer/song links**: every recommendation row gets a hover-revealed
+  **▶ Trailer** (movies) or **▶ Play** (music) button that opens a YouTube search for it
+  in a new tab -- `{title} ({year}) trailer` for movies, `{artist} {title}` for music,
+  reusing the `display_label`/`search_term` already computed for exports and the slskd
+  push. Deliberately just a search link, not a call to the YouTube Data API: a
+  well-formed query already reliably surfaces the real trailer/song as the first or
+  second result, and skipping the API sidesteps needing a Google API key and its quota.
 - **slskd Glance widget, upgraded**: `GET /integrations/api/slskd/` aggregates slskd's
   own transfer list in Python (peer + directory groups, not raw per-file JSON) so the
   Media page's slskd widget can show *what's actually downloading right now* -- a

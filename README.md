@@ -17,7 +17,10 @@ MediaThatFeelsLike pulls posts from both subs and presents them as two sections,
 more than one image and prev/next arrows let you flick through the gallery right there.
 Clicking a tile opens the **vibe page**: the image(s) at the top, and a cleaned-up list
 of recommendations parsed out of the comments — with the source comment one click away,
-tick-boxes to curate the list, inline editing, and manual additions.
+tick-boxes to curate the list, inline editing, and manual additions. Hover a recommendation
+for a one-click **▶ Trailer** (movies) or **▶ Play** (music) button that opens a YouTube
+search for it in a new tab — no setup, no API key, just a well-formed search query; YouTube's
+own ranking reliably puts the actual trailer or song first.
 
 From there:
 
