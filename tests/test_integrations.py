@@ -105,6 +105,192 @@ def test_tmdb_best_trailer_none_when_no_match_or_no_youtube_video():
     assert c.best_trailer("Drive") is None
 
 
+TMDB_DETAIL = {
+    "id": 587, "title": "Big Fish", "original_title": "Big Fish", "tagline": "An adventure as big as life itself.",
+    "overview": "Edward Bloom...", "release_date": "2003-12-10", "runtime": 125, "vote_average": 7.71, "vote_count": 7939,
+    "genres": [{"name": "Adventure"}, {"name": "Fantasy"}], "poster_path": "/p.jpg", "backdrop_path": "/b.jpg",
+    "budget": 70000000, "revenue": 123200000, "status": "Released", "homepage": "", "imdb_id": "tt0319061",
+    "production_companies": [{"name": "Columbia Pictures"}], "production_countries": [{"name": "United States of America"}],
+    "spoken_languages": [{"english_name": "English"}],
+    "videos": {"results": [
+        {"key": "clip1", "site": "YouTube", "type": "Clip", "official": True, "name": "A clip"},
+        {"key": "tr1", "site": "YouTube", "type": "Trailer", "official": True, "size": 1080, "name": "Official Trailer"},
+    ]},
+    "credits": {
+        "cast": [{"name": "Ewan McGregor", "character": "Ed Bloom (young)", "profile_path": "/e.jpg"}],
+        "crew": [{"name": "Tim Burton", "job": "Director"}, {"name": "John August", "job": "Screenplay"}, {"name": "Someone", "job": "Gaffer"}],
+    },
+    "release_dates": {"results": [
+        {"iso_3166_1": "US", "release_dates": [{"certification": "PG-13"}]},
+        {"iso_3166_1": "GB", "release_dates": [{"certification": ""}, {"certification": "PG"}]},
+    ]},
+    "keywords": {"keywords": [{"name": "witch"}, {"name": "circus"}]},
+    "similar": {"results": [{"id": 1, "title": "Edward Scissorhands", "release_date": "1990-12-07", "poster_path": "/s.jpg", "vote_average": 7.7}, {"id": 2, "title": "No poster", "poster_path": None}]},
+    "external_ids": {"imdb_id": "tt0319061"},
+}
+
+
+def test_tmdb_shape_movie_flattens_the_detail_payload():
+    from integrations.clients.tmdb import shape_movie
+
+    m = shape_movie(TMDB_DETAIL)
+    assert m["title"] == "Big Fish" and m["year"] == "2003" and m["original_title"] == ""  # same as title -> not repeated
+    assert m["rating"] == 7.7 and m["votes"] == 7939 and m["runtime"] == 125
+    assert m["certification"] == "PG (GB)"  # GB preferred over US; blank certification entries skipped
+    assert m["poster"] == "https://image.tmdb.org/t/p/w500/p.jpg" and m["backdrop"].endswith("w1280/b.jpg")
+    assert m["trailer"] == {"key": "tr1", "name": "Official Trailer"}
+    assert m["other_videos"] == [{"key": "clip1", "name": "A clip", "type": "Clip"}]  # the trailer itself isn't repeated
+    assert m["cast"][0]["photo"].endswith("w185/e.jpg") and m["cast"][0]["character"] == "Ed Bloom (young)"
+    assert m["crew"] == [("Director", "Tim Burton"), ("Screenplay", "John August")]  # gaffer isn't a headline job
+    assert m["similar"] == [{"title": "Edward Scissorhands", "year": "1990", "poster": "https://image.tmdb.org/t/p/w185/s.jpg", "url": "https://www.themoviedb.org/movie/1", "rating": 7.7}]
+    assert m["imdb_url"] == "https://www.imdb.com/title/tt0319061/" and m["tmdb_url"] == "https://www.themoviedb.org/movie/587"
+    assert m["keywords"] == ["witch", "circus"] and m["companies"] == ["Columbia Pictures"]
+
+
+def test_tmdb_movie_for_searches_then_fetches_details_in_one_call():
+    c = TmdbClient(cfg("tmdb"))
+    calls = stub(c, {("GET", "/3/search/movie"): {"results": [{"id": 587, "title": "Big Fish"}]}, ("GET", "/3/movie/587"): TMDB_DETAIL})
+    assert c.movie_for("Big Fish", 2003)["title"] == "Big Fish"
+    detail_call = [k for m, p, k in calls if p == "/3/movie/587"][0]
+    assert "videos" in detail_call["params"]["append_to_response"] and "credits" in detail_call["params"]["append_to_response"]
+    assert calls[0][2]["params"] == {"query": "Big Fish", "primary_release_year": 2003}
+
+
+# -- MusicBrainz ----------------------------------------------------------------------
+
+
+def _mb_recording(rid, title, artist, releases):
+    return {
+        "id": rid, "score": 100, "title": title, "length": 204000,
+        "artist-credit": [{"name": artist, "artist": {"id": "artist-mbid", "name": artist}}],
+        "releases": releases,
+    }
+
+
+def _mb_release(title, status="Official", primary="Album", secondary=None, date="2003-03-25", rg="rg-1"):
+    return {"id": f"rel-{title}-{date}", "title": title, "status": status, "date": date, "country": "US",
+            "release-group": {"id": rg, "primary-type": primary, "secondary-types": secondary or []}}
+
+
+def test_musicbrainz_prefers_the_canonical_recording_and_its_plain_album(monkeypatch):
+    from integrations.clients.musicbrainz import MusicBrainzClient
+
+    c = MusicBrainzClient()
+    payload = {"recordings": [
+        # A piano-instrumental bootleg version matches the title just as well -- must lose.
+        _mb_recording("rec-bootleg", "Easier to Run", "Linkin Park", [_mb_release("Piano Instrumentals", status="Bootleg", secondary=["Remix"], rg="rg-b")]),
+        _mb_recording("rec-canon", "Easier to Run", "Linkin Park", [
+            _mb_release("Meteora (20th anniversary edition)", secondary=["Compilation"], date="2023-04-07", rg="rg-20"),
+            _mb_release("Numb", primary="Single", date="2003-09-08", rg="rg-single"),
+            _mb_release("Meteora", date="2006-09-26", rg="rg-meteora"),
+            _mb_release("Meteora", date="2003-03-25", rg="rg-meteora"),
+        ]),
+        _mb_recording("rec-cover", "Easier to Run", "Some Cover Band", [_mb_release("Covers")]),
+    ]}
+    monkeypatch.setattr(c, "get", lambda path, **params: payload)
+    r = c.search_recording("Linkin Park", "Easier to Run")
+    assert r["mbid"] == "rec-canon" and r["artist_mbid"] == "artist-mbid"
+    assert r["album"] == "Meteora" and r["album_year"] == "2003" and r["album_type"] == "Album"  # earliest official plain album
+    assert r["release_group_mbid"] == "rg-meteora" and r["length"] == "3:24"
+    assert [x["title"] for x in r["releases"]] == ["Meteora", "Numb", "Meteora (20th anniversary edition)"]  # one row per release group, by date
+
+
+def test_musicbrainz_search_recording_returns_none_when_nothing_matches_both_halves(monkeypatch):
+    from integrations.clients.musicbrainz import MusicBrainzClient
+
+    c = MusicBrainzClient()
+    monkeypatch.setattr(c, "get", lambda path, **params: {"recordings": [_mb_recording("x", "Easier to Run", "Some Cover Band", [])]})
+    assert c.search_recording("Linkin Park", "Easier to Run") is None
+
+
+def test_musicbrainz_shape_artist_labels_links_and_years():
+    from integrations.clients.musicbrainz import shape_artist
+
+    a = shape_artist({
+        "id": "a1", "name": "Linkin Park", "type": "Group", "country": "US", "life-span": {"begin": "1996", "ended": False},
+        "tags": [{"name": "rock", "count": 3}, {"name": "nu metal", "count": 9}],
+        "relations": [
+            {"type": "official homepage", "url": {"resource": "https://linkinpark.com"}},
+            {"type": "streaming", "url": {"resource": "https://open.spotify.com/artist/x"}},
+            {"type": "social network", "url": {"resource": "https://www.instagram.com/linkinpark"}},
+            {"type": "streaming", "url": {"resource": "https://open.spotify.com/artist/dupe"}},   # second Spotify link -> dropped
+            {"type": "purchase for mail-order", "url": {"resource": "https://shop.example"}},    # no label for this type -> dropped
+        ],
+    })
+    assert a["years"] == "1996 – present" and a["tags"] == ["nu metal", "rock"]
+    assert [link["label"] for link in a["links"]] == ["Website", "Spotify", "Instagram"]
+    assert a["url"] == "https://musicbrainz.org/artist/a1"
+
+
+def test_musicbrainz_cover_art_urls_release_group_first():
+    from integrations.clients.musicbrainz import cover_art_urls
+
+    assert cover_art_urls("rg", "rel") == ["https://coverartarchive.org/release-group/rg/front-500", "https://coverartarchive.org/release/rel/front-500"]
+    assert cover_art_urls(None, None) == []
+
+
+# -- Last.fm ----------------------------------------------------------------------------
+
+
+def test_lastfm_track_info_shapes_stats_and_strips_placeholder_art_and_read_more():
+    from integrations.clients.lastfm import LastfmClient
+
+    c = LastfmClient(cfg("lastfm"))
+    calls = stub(c, {("GET", "/2.0/"): {"track": {
+        "name": "Easier to Run", "url": "https://www.last.fm/music/Linkin+Park/_/Easier+to+Run", "duration": "204000",
+        "listeners": "900130", "playcount": "7355834", "artist": {"name": "Linkin Park"},
+        "album": {"title": "Meteora", "url": "https://www.last.fm/music/Linkin+Park/Meteora",
+                  "image": [{"#text": "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.png", "size": "large"}]},
+        "toptags": {"tag": [{"name": "nu metal"}, {"name": "rock"}]},
+        "wiki": {"summary": 'A song by <b>Linkin Park</b>. <a href="https://www.last.fm/music/Linkin+Park/_/Easier+to+Run">Read more on Last.fm</a>'},
+    }}})
+    t = c.track_info("Linkin Park", "Easier to Run")
+    assert t["listeners"] == 900130 and t["playcount"] == 7355834 and t["length"] == "3:24"
+    assert t["album"] == "Meteora" and t["album_image"] == ""  # the grey placeholder is not art
+    assert t["tags"] == ["nu metal", "rock"] and t["wiki"] == "A song by Linkin Park."
+    assert calls[0][2]["params"] == {"method": "track.getInfo", "artist": "Linkin Park", "track": "Easier to Run", "autocorrect": 1}
+    assert c.session.params == {"api_key": "k", "format": "json"}  # key rides on every request, never in a path
+
+
+def test_lastfm_artist_info_and_top_tracks():
+    from integrations.clients.lastfm import LastfmClient
+
+    c = LastfmClient(cfg("lastfm"))
+    stub(c, {("GET", "/2.0/"): lambda kw: (
+        {"artist": {"name": "Linkin Park", "url": "u", "stats": {"listeners": "7117741", "playcount": "779634202"},
+                    "similar": {"artist": [{"name": "Papa Roach", "url": "p"}]}, "tags": {"tag": [{"name": "rock"}]}, "bio": {"summary": "Bio text. <a href='x'>Read more on Last.fm</a>"}}}
+        if kw["params"]["method"] == "artist.getInfo" else
+        {"toptracks": {"track": [{"name": "In the End", "playcount": "41501727", "listeners": "1", "url": "t"}]}}
+    )})
+    a = c.artist_info("Linkin Park")
+    assert a["listeners"] == 7117741 and a["bio"] == "Bio text." and a["similar"] == [{"name": "Papa Roach", "url": "p"}]
+    assert c.artist_top_tracks("Linkin Park") == [{"name": "In the End", "playcount": 41501727, "listeners": 1, "url": "t"}]
+
+
+def test_slskd_ranked_lists_candidates_best_first_and_retries_an_empty_search(monkeypatch):
+    from integrations.clients.slskd import describe_file
+
+    c = SlskdClient(cfg("slskd"))
+    monkeypatch.setattr("integrations.clients.slskd.time.sleep", lambda s: None)
+    attempts = {"n": 0}
+
+    def search(query, max_wait=15):
+        attempts["n"] += 1
+        return [] if attempts["n"] == 1 else MAZZY_STAR_RESPONSES   # the Soulseek server dropped the first one
+
+    c.search = search
+    rows = c.ranked("Mazzy Star", "Fade Into You", retries=1)
+    assert attempts["n"] == 2
+    assert [r["username"] for r in rows][:2] == ["free_slot_user", "flac_hoarder"]  # free slot beats the queued flac
+    assert rows[-1]["username"] == "irrelevant"  # a same-artist different track scrapes past the floor but ranks last
+    assert rows[1]["queue"] == 12 and rows[0]["free_slot"] is True
+    info = describe_file(rows[1]["file"])
+    assert info == {"name": "01 Fade Into You.flac", "folder": "So Tonight", "ext": "FLAC", "quality": "16-bit/44.1kHz", "size_mb": 30.0, "length": "4:55"}
+
+    attempts["n"] = 0
+    assert c.ranked("Mazzy Star", "Fade Into You") == [] and attempts["n"] == 1   # no retry by default (the batch push path)
+
+
 def test_lidarr_album_add_for_new_artist_then_remonitors(monkeypatch):
     monkeypatch.setattr("integrations.clients.lidarr.time.sleep", lambda s: None)
     c = LidarrClient(cfg("lidarr", root_folder="/music", quality_profile_id=5, metadata_profile_id=4))

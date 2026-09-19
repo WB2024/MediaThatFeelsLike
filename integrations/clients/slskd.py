@@ -36,6 +36,28 @@ def _basename(filename):
     return filename.replace("\\", "/").rsplit("/", 1)[-1]
 
 
+def describe_file(file):
+    """Human-readable facts about a search-result file, for the detail page's picker."""
+    filename = file.get("filename", "")
+    ext = (file.get("extension") or _extension(filename)).upper()
+    if file.get("bitRate"):
+        quality = f"{file['bitRate']}kbps{' VBR' if file.get('isVariableBitRate') else ''}"
+    elif file.get("bitDepth") or file.get("sampleRate"):
+        rate = f"/{(file.get('sampleRate') or 0) / 1000:g}kHz" if file.get("sampleRate") else ""
+        quality = f"{file.get('bitDepth') or '?'}-bit{rate}"
+    else:
+        quality = ""
+    length = file.get("length") or 0
+    return {
+        "name": _basename(filename),
+        "folder": filename.replace("\\", "/").rsplit("/", 1)[0].rsplit("/", 1)[-1] if "/" in filename.replace("\\", "/") else "",
+        "ext": ext,
+        "quality": quality,
+        "size_mb": round((file.get("size") or 0) / 1048576, 1),
+        "length": f"{length // 60}:{length % 60:02d}" if length else "",
+    }
+
+
 class SlskdClient(BaseClient):
     api = "/api/v0"
 
@@ -96,14 +118,26 @@ class SlskdClient(BaseClient):
         quality = FORMAT_RANK.get(ext, 0) + min(file.get("bitRate", 0) or 0, 1000) / 1000
         return name_sim * 3 + quality
 
-    def find_best(self, artist, title, options=None):
-        """Search and return (username, file, score) for the best matching audio file, or
-        (None, None, 0) if nothing good enough turned up."""
+    def ranked(self, artist, title, options=None, limit=12, retries=0):
+        """Search and return the plausible audio files, best first, each as
+        {username, file, score, free_slot, queue}. The detail page shows these so a
+        person can pick; `find_best` just takes the top one.
+
+        `retries`: the Soulseek server silently drops a search fired too soon after
+        another (observed live: back-to-back searches for hugely popular tracks came
+        back empty roughly every other time, regardless of query). The interactive
+        picker retries once after a pause; the batch push path doesn't, to keep its
+        per-item time budget honest."""
         options = options or {}
         query = f"{artist} {title}".strip()
         responses = self.search(query, max_wait=options.get("max_wait", 15))
+        for _ in range(retries):
+            if responses:
+                break
+            time.sleep(4)
+            responses = self.search(query, max_wait=options.get("max_wait", 15))
 
-        best = (None, None, -1)
+        rows = []
         for resp in responses:
             # Availability matters more than a marginal quality gain: a peer with no
             # free slot and a long queue may take hours to start, or never finish if
@@ -114,12 +148,20 @@ class SlskdClient(BaseClient):
                 base = self._score_file(file.get("filename", ""), file, query)
                 if base is None:
                     continue
-                score = base + slot_bonus - queue_penalty
-                if score > best[2]:
-                    best = (resp.get("username"), file, score)
-        if best[0] is None:
+                rows.append({
+                    "username": resp.get("username"), "file": file, "score": base + slot_bonus - queue_penalty,
+                    "free_slot": bool(resp.get("hasFreeUploadSlot")), "queue": resp.get("queueLength", 0) or 0,
+                })
+        rows.sort(key=lambda r: -r["score"])
+        return rows[:limit]
+
+    def find_best(self, artist, title, options=None):
+        """Search and return (username, file, score) for the best matching audio file, or
+        (None, None, 0) if nothing good enough turned up."""
+        rows = self.ranked(artist, title, options, limit=1)
+        if not rows:
             return None, None, 0
-        return best
+        return rows[0]["username"], rows[0]["file"], rows[0]["score"]
 
     # -- downloading ------------------------------------------------------------------------
 

@@ -1,0 +1,1 @@
+<span class="chip {% if result.status == 'queued' %}ok{% else %}err{% endif %}" title="{{ result.detail }}">{% if result.status == 'queued' %}✓ queued{% else %}✕ {{ result.detail|truncatechars:60 }}{% endif %}</span>

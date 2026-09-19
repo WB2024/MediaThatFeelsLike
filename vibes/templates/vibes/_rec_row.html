@@ -1,7 +1,7 @@
 <li class="rec {% if not rec.included %}excluded{% endif %}" id="rec-{{ rec.pk }}">
   <input type="checkbox" {% if rec.included %}checked{% endif %} hx-post="{% url 'vibes:rec_toggle' rec.pk %}" title="Include in exports / pushes">
   <div>
-    <div class="label">{{ rec.display_label }}</div>
+    <div class="label"><a href="{% url 'vibes:rec_detail' rec.pk %}" title="Open this recommendation's own page">{{ rec.display_label }}</a></div>
     <div class="sub">
       <span class="conf {{ rec.confidence_band }}" title="confidence {{ rec.confidence }}"></span>
       <span title="{{ rec.get_method_display }}">{{ rec.get_method_display|lower }}</span>

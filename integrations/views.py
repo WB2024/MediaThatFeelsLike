@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django import forms
 from django.contrib import messages
 from django.forms import modelformset_factory
@@ -9,6 +11,7 @@ from django.views.decorators.http import require_POST
 from reddit_sync.models import SyncRun
 from vibes.models import Post, Recommendation, Source
 
+from . import enrich
 from .clients.base import ServiceError
 from .models import ServiceConfig, service_flags
 from .push import CLIENTS, push_one, push_post
@@ -144,3 +147,40 @@ def push_rec(request, rec_pk, service):
     push_one(rec, service, playlist_name=name)
     rec.refresh_from_db()
     return render(request, "vibes/_rec_row.html", {"rec": rec, "post": rec.post, **service_flags(rec.post.source.kind)})
+
+
+# -- recommendation detail page panels (all htmx, all lazy) ----------------------------
+
+CARD_SERVICES = ("radarr", "lidarr", "jellyfin", "navidrome")
+HINT_KEYS = ("tmdb_id", "mbid", "album")
+
+
+def rec_card(request, rec_pk, service):
+    """One "in your library" card. GET checks; POST with action=add|playlist does it
+    first (via the same push_one as the row's dropdown), then re-checks. Hints (ids the
+    page already resolved) ride along as query params so a POST keeps them too."""
+    rec = get_object_or_404(Recommendation.objects.select_related("post__source"), pk=rec_pk)
+    if service not in CARD_SERVICES:
+        return HttpResponseBadRequest("unknown service")
+    action = request.POST.get("action") if request.method == "POST" else None
+    hints = {k: request.GET.get(k, "") for k in HINT_KEYS if request.GET.get(k)}
+    card = enrich.service_card(rec, service, action=action, playlist_name=request.headers.get("HX-Prompt") or None, hints=hints)
+    return render(request, "integrations/_rec_card.html", {"card": card, "rec": rec, "hints_qs": urlencode(hints)})
+
+
+def rec_artist(request, rec_pk):
+    rec = get_object_or_404(Recommendation.objects.select_related("post__source"), pk=rec_pk)
+    return render(request, "integrations/_rec_artist.html", {"rec": rec, **enrich.artist_panel(rec, mbid=request.GET.get("mbid", ""))})
+
+
+@require_POST
+def rec_slskd_search(request, rec_pk):
+    rec = get_object_or_404(Recommendation.objects.select_related("post__source"), pk=rec_pk)
+    return render(request, "integrations/_rec_slskd.html", {"rec": rec, **enrich.slskd_search(rec)})
+
+
+@require_POST
+def rec_slskd_download(request, rec_pk):
+    rec = get_object_or_404(Recommendation.objects.select_related("post__source"), pk=rec_pk)
+    result = enrich.slskd_download(rec, request.POST.get("username", ""), request.POST.get("filename", ""), request.POST.get("size", "0"))
+    return render(request, "integrations/_rec_slskd_queued.html", {"result": result})

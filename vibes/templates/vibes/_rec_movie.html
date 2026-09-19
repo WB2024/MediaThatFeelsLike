@@ -1,0 +1,99 @@
+{% load humanize %}
+{% if tmdb %}
+<div class="rec-hero">
+  {% if tmdb.backdrop %}<div class="bg" style="background-image:url('{{ tmdb.backdrop }}')"></div>{% endif %}
+  <div class="inner">
+    {% if tmdb.poster %}<div class="art"><img src="{{ tmdb.poster }}" alt=""></div>{% endif %}
+    <div class="body">
+      <h1>{{ tmdb.title }}{% if tmdb.year %} <small>({{ tmdb.year }})</small>{% endif %}</h1>
+      {% if tmdb.original_title %}<div class="tagline">{{ tmdb.original_title }}</div>{% endif %}
+      {% if tmdb.tagline %}<p class="tagline">“{{ tmdb.tagline }}”</p>{% endif %}
+      <div class="meta">
+        {% if tmdb.rating %}<span class="rating">★ {{ tmdb.rating }}</span><span>{{ tmdb.votes|intcomma }} votes</span>{% endif %}
+        {% if tmdb.runtime %}<span>{{ tmdb.runtime }} min</span>{% endif %}
+        {% if tmdb.certification %}<span>{{ tmdb.certification }}</span>{% endif %}
+        {% for g in tmdb.genres %}<span class="genre">{{ g }}</span>{% endfor %}
+      </div>
+      <div class="links">
+        {% if tmdb.tmdb_url %}<a href="{{ tmdb.tmdb_url }}" target="_blank" rel="noopener">TMDB ↗</a>{% endif %}
+        {% if tmdb.imdb_url %}<a href="{{ tmdb.imdb_url }}" target="_blank" rel="noopener">IMDb ↗</a>{% endif %}
+        {% if tmdb.homepage %}<a href="{{ tmdb.homepage }}" target="_blank" rel="noopener">Official site ↗</a>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if tmdb.overview %}
+<div class="rec-section"><h2>Overview</h2><p>{{ tmdb.overview }}</p></div>
+{% endif %}
+
+{% if tmdb.trailer %}
+<div class="rec-section">
+  <h2>Trailer</h2>
+  <div class="rec-embed"><iframe src="https://www.youtube.com/embed/{{ tmdb.trailer.key }}" title="{{ tmdb.trailer.name }}" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>
+  <p class="trailer-note">{{ tmdb.trailer.name }} · <a href="https://www.youtube.com/watch?v={{ tmdb.trailer.key }}" target="_blank" rel="noopener">open on YouTube ↗</a> (some studios disable embedding here — this always works)</p>
+  {% if tmdb.other_videos %}
+    <div class="rec-videos">{% for v in tmdb.other_videos %}<a href="https://www.youtube.com/watch?v={{ v.key }}" target="_blank" rel="noopener" title="{{ v.name }}">{{ v.type }}: {{ v.name|truncatechars:38 }}</a>{% endfor %}</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if tmdb.cast %}
+<div class="rec-section">
+  <h2>Cast</h2>
+  <div class="cast">
+    {% for p in tmdb.cast %}
+      <div class="person">
+        {% if p.photo %}<img src="{{ p.photo }}" alt="" loading="lazy">{% else %}<div class="ph"></div>{% endif %}
+        <div class="n">{{ p.name }}</div>
+        <div class="c">{{ p.character }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="rec-section">
+  <h2>Details</h2>
+  <dl class="facts">
+    {% for job, names in tmdb.crew %}<dt>{{ job }}</dt><dd>{{ names }}</dd>{% endfor %}
+    {% if tmdb.release_date %}<dt>Released</dt><dd>{{ tmdb.release_date }}{% if tmdb.status and tmdb.status != "Released" %} · {{ tmdb.status }}{% endif %}</dd>{% endif %}
+    {% if tmdb.budget %}<dt>Budget</dt><dd>${{ tmdb.budget|intcomma }}</dd>{% endif %}
+    {% if tmdb.revenue %}<dt>Box office</dt><dd>${{ tmdb.revenue|intcomma }}</dd>{% endif %}
+    {% if tmdb.companies %}<dt>Production</dt><dd>{{ tmdb.companies|join:", " }}</dd>{% endif %}
+    {% if tmdb.countries %}<dt>Country</dt><dd>{{ tmdb.countries|join:", " }}</dd>{% endif %}
+    {% if tmdb.languages %}<dt>Language</dt><dd>{{ tmdb.languages|join:", " }}</dd>{% endif %}
+  </dl>
+  {% if tmdb.keywords %}<div class="tags" style="margin-top:10px">{% for k in tmdb.keywords %}<span>{{ k }}</span>{% endfor %}</div>{% endif %}
+</div>
+
+{% if tmdb.similar %}
+<div class="rec-section">
+  <h2>More like this</h2>
+  <div class="similar">
+    {% for s in tmdb.similar %}
+      <a href="{{ s.url }}" target="_blank" rel="noopener">
+        <img src="{{ s.poster }}" alt="" loading="lazy">
+        <div class="t">{{ s.title }}</div>
+        <div>{{ s.year }}{% if s.rating %} · ★ {{ s.rating|floatformat:1 }}{% endif %}</div>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+<p class="trailer-note" style="margin-top:18px">Film data from <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TheMovieDB</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+
+{% else %}
+<div class="rec-hero">
+  <div class="inner">
+    <div class="body">
+      <h1>{{ rec.display_label }}</h1>
+      <p class="tagline">
+        {% if not tmdb_configured %}Add a TheMovieDB read token on the <a href="{% url 'integrations:settings' %}">Settings page</a> to fill this page with artwork, a synopsis, cast, trailers and more.
+        {% elif error %}TheMovieDB: {{ error }}
+        {% else %}TheMovieDB has no confident match for “{{ rec.parsed_title }}”{% if rec.parsed_year %} ({{ rec.parsed_year }}){% endif %} — the parser may have picked up an odd title. You can <a href="{{ post.get_absolute_url }}#rec-{{ rec.pk }}">edit it on the post</a>.{% endif %}
+      </p>
+    </div>
+  </div>
+</div>
+{% endif %}

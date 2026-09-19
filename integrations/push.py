@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from .clients.base import ServiceError
 from .clients.jellyfin import JellyfinClient
+from .clients.lastfm import LastfmClient
 from .clients.lidarr import LidarrClient
 from .clients.navidrome import NavidromeClient
 from .clients.radarr import RadarrClient
@@ -18,6 +19,7 @@ CLIENTS = {
     ServiceConfig.Service.NAVIDROME: NavidromeClient,
     ServiceConfig.Service.SLSKD: SlskdClient,
     ServiceConfig.Service.TMDB: TmdbClient,
+    ServiceConfig.Service.LASTFM: LastfmClient,
 }
 OK_STATUSES = {"added", "exists", "playlisted", "artist_only", "queued"}
 DEFAULT_PLAYLIST_NAME = "MediaThatFeelsLike Picks"

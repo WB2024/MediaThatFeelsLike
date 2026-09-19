@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}{{ rec.display_label }} · MediaThatFeelsLike{% endblock %}
+{% block content %}
+<a class="rec-back" href="{{ post.get_absolute_url }}">← back to “{{ post.title|truncatechars:80 }}”</a>
+<div class="recpage">
+  <section>
+    {% if kind == "movies" %}{% include "vibes/_rec_movie.html" %}{% else %}{% include "vibes/_rec_music.html" %}{% endif %}
+  </section>
+
+  <aside>
+    <div class="panel">
+      <div class="panel-head"><h2>In your library</h2></div>
+      {% if can_radarr %}
+        <div class="svc-card" hx-get="{% url 'integrations:rec_card' rec.pk 'radarr' %}{% if tmdb.tmdb_id %}?tmdb_id={{ tmdb.tmdb_id }}{% endif %}" hx-trigger="load" hx-swap="outerHTML">
+          <div class="name"><span class="dot"></span>Radarr</div><div class="sub">checking…</div>
+        </div>
+      {% endif %}
+      {% if can_lidarr %}
+        <div class="svc-card" hx-get="{% url 'integrations:rec_card' rec.pk 'lidarr' %}?mbid={{ artist_mbid|urlencode }}&album={{ album_hint|urlencode }}" hx-trigger="load" hx-swap="outerHTML">
+          <div class="name"><span class="dot"></span>Lidarr</div><div class="sub">checking…</div>
+        </div>
+      {% endif %}
+      {% if can_jellyfin %}
+        <div class="svc-card" hx-get="{% url 'integrations:rec_card' rec.pk 'jellyfin' %}" hx-trigger="load" hx-swap="outerHTML">
+          <div class="name"><span class="dot"></span>Jellyfin</div><div class="sub">checking…</div>
+        </div>
+      {% endif %}
+      {% if can_navidrome %}
+        <div class="svc-card" hx-get="{% url 'integrations:rec_card' rec.pk 'navidrome' %}" hx-trigger="load" hx-swap="outerHTML">
+          <div class="name"><span class="dot"></span>Navidrome</div><div class="sub">checking…</div>
+        </div>
+      {% endif %}
+      {% if not can_radarr and not can_lidarr and not can_jellyfin and not can_navidrome %}
+        <div class="panel-body"><p class="trailer-note">No library services configured for {{ kind }} yet — <a href="{% url 'integrations:settings' %}">set them up</a> to see whether you already have this.</p></div>
+      {% endif %}
+    </div>
+
+    {% if can_slskd %}
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head">
+        <h2>Soulseek</h2>
+        <div class="tools">
+          <button class="btn small primary" hx-post="{% url 'integrations:rec_slskd_search' rec.pk %}" hx-target="#slskd-results" hx-swap="innerHTML">
+            <span class="label">⌕ Search peers</span><span class="htmx-indicator">searching…</span>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body" id="slskd-results">
+        {% with st=rec.integration_state.slskd %}{% if st %}<p class="trailer-note"><span class="chip {% if st.status == 'queued' %}ok{% elif st.status == 'error' or st.status == 'not_found' %}err{% else %}warn{% endif %}">slskd: {{ st.status }}</span> {{ st.detail|truncatechars:120 }}</p>{% endif %}{% endwith %}
+        <p class="trailer-note">Searches Soulseek for this track and lists every plausible copy — format, bitrate, size, who has it and whether they have a free slot — so you can pick one rather than trusting the automatic best guess.</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head"><h2>{% if kind == "movies" %}Watch{% else %}Listen{% endif %}</h2></div>
+      <div class="panel-body links-col">
+        {% if kind == "movies" %}
+          {% if tmdb.trailer %}<a href="https://www.youtube.com/watch?v={{ tmdb.trailer.key }}" target="_blank" rel="noopener">▶ Trailer on YouTube ↗</a>{% endif %}
+          {% with q=rec.display_label|add:" trailer" %}<a href="https://www.youtube.com/results?search_query={{ q|urlencode }}" target="_blank" rel="noopener">⌕ Search YouTube for trailers ↗</a>{% endwith %}
+          {% if tmdb.imdb_url %}<a href="{{ tmdb.imdb_url }}" target="_blank" rel="noopener">IMDb ↗</a>{% endif %}
+          {% if tmdb.tmdb_url %}<a href="{{ tmdb.tmdb_url }}" target="_blank" rel="noopener">TheMovieDB ↗</a>{% endif %}
+          {% if tmdb.homepage %}<a href="{{ tmdb.homepage }}" target="_blank" rel="noopener">Official site ↗</a>{% endif %}
+        {% else %}
+          {% with q=rec.search_term %}
+            <a href="https://www.youtube.com/results?search_query={{ q|urlencode }}" target="_blank" rel="noopener">▶ YouTube ↗</a>
+            <a href="https://open.spotify.com/search/{{ q|urlencode }}" target="_blank" rel="noopener">Spotify ↗</a>
+          {% endwith %}
+          {% if track.url %}<a href="{{ track.url }}" target="_blank" rel="noopener">Last.fm ↗</a>{% endif %}
+          {% if mb.url %}<a href="{{ mb.url }}" target="_blank" rel="noopener">MusicBrainz ↗</a>{% endif %}
+        {% endif %}
+        {% if rec.parsed_url %}<a href="{{ rec.parsed_url }}" target="_blank" rel="noopener">Link from the comment ↗</a>{% endif %}
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head"><h2>From the post</h2></div>
+      <div class="panel-body">
+        <dl class="facts">
+          <dt>Parsed as</dt><dd>{{ rec.display_label }}</dd>
+          <dt>How</dt><dd>{{ rec.get_method_display|lower }} <span class="conf {{ rec.confidence_band }}" title="confidence {{ rec.confidence }}"></span> {{ rec.confidence|floatformat:2 }}</dd>
+          {% if rec.mention_count > 1 %}<dt>Mentions</dt><dd>×{{ rec.mention_count }} in this thread</dd>{% endif %}
+          {% if rec.comment_author %}<dt>Suggested by</dt><dd>u/{{ rec.comment_author }}{% if rec.comment_score %} · ▲ {{ rec.comment_score }}{% endif %}{% if rec.comment_url %} · <a href="{{ rec.comment_url }}" target="_blank" rel="noopener">comment ↗</a>{% endif %}</dd>{% endif %}
+          <dt>Status</dt><dd>{% if rec.included %}included in exports{% else %}excluded{% endif %} · <a href="{{ post.get_absolute_url }}#rec-{{ rec.pk }}">edit on the post</a></dd>
+        </dl>
+        {% if rec.raw_text %}<blockquote>{{ rec.raw_text|truncatechars:1200 }}</blockquote>{% endif %}
+      </div>
+    </div>
+  </aside>
+</div>
+{% endblock %}

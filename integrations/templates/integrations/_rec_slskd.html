@@ -1,0 +1,22 @@
+{% if rows %}
+<p class="trailer-note" style="margin:0 0 8px">{{ rows|length }} plausible cop{{ rows|length|pluralize:"y,ies" }}, best first — availability (a free upload slot, a short queue) is weighted above a marginal quality gain.</p>
+<div class="slskd-rows">
+  {% for r in rows %}
+  <div class="slskd-row">
+    <div class="f" title="{{ r.file.filename }}">{{ r.info.name }}</div>
+    <form hx-post="{% url 'integrations:rec_slskd_download' rec.pk %}" hx-target="this" hx-swap="outerHTML">
+      <input type="hidden" name="username" value="{{ r.username }}">
+      <input type="hidden" name="filename" value="{{ r.file.filename }}">
+      <input type="hidden" name="size" value="{{ r.file.size }}">
+      <button class="btn small" type="submit"><span class="label">⇩ Get</span><span class="htmx-indicator">…</span></button>
+    </form>
+    <div class="m">{{ r.info.ext }}{% if r.info.quality %} · {{ r.info.quality }}{% endif %}{% if r.info.length %} · {{ r.info.length }}{% endif %} · {{ r.info.size_mb }} MB{% if r.info.folder %} · <span title="folder on the peer">{{ r.info.folder|truncatechars:36 }}</span>{% endif %}</div>
+    <div class="m">{{ r.username }} · {% if r.free_slot %}<span style="color:var(--ok)">free slot</span>{% else %}<span style="color:var(--warn)">queue of {{ r.queue }}</span>{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+{% elif not configured %}
+<p class="trailer-note">slskd isn't configured.</p>
+{% else %}
+<p class="trailer-note">{% if error %}{{ error }}{% else %}No matching audio files came back from Soulseek for “{{ rec.search_term }}”. Peers come and go — try again in a minute, or search by hand in slskd.{% endif %}</p>
+{% endif %}

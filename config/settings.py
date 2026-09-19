@@ -37,6 +37,7 @@ env = environ.Env(
     SLSKD_URL=(str, ""),
     SLSKD_API_KEY=(str, ""),
     TMDB_API_KEY=(str, ""),
+    LASTFM_API_KEY=(str, ""),
     DATA_DIR=(str, ""),
     MEDIA_DATA_DIR=(str, ""),
     MIN_FREE_DISK_GB=(float, 2.0),
@@ -188,8 +189,9 @@ SERVICE_ENV_DEFAULTS = {
         "password": env("NAVIDROME_PASSWORD"),
     },
     "slskd": {"url": env("SLSKD_URL"), "api_key": env("SLSKD_API_KEY")},
-    # Fixed API host -- there's nothing to configure there, just the read access token.
+    # Fixed API hosts -- there's nothing to configure there, just the key/token.
     "tmdb": {"url": "https://api.themoviedb.org", "api_key": env("TMDB_API_KEY")},
+    "lastfm": {"url": "https://ws.audioscrobbler.com", "api_key": env("LASTFM_API_KEY")},
 }
 
 LOGGING = {

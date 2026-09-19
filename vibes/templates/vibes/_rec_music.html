@@ -1,0 +1,69 @@
+{% load humanize %}
+<div class="rec-hero">
+  <div class="bg" id="hero-bg"></div>
+  <div class="inner">
+    {% if cover_urls %}
+      <div class="art">
+        <img src="{{ cover_urls.0 }}" alt="" data-alts="{{ cover_urls|slice:'1:'|join:'|' }}"
+             onload="document.getElementById('hero-bg').style.backgroundImage='url('+this.src+')'"
+             onerror="var a=(this.dataset.alts||'').split('|').filter(Boolean);if(a.length){this.src=a.shift();this.dataset.alts=a.join('|')}else{this.parentNode.remove()}">
+      </div>
+    {% endif %}
+    <div class="body">
+      {% if rec.parsed_title %}
+        <h1>{{ mb.title|default:rec.parsed_title }}{% if mb.artist or rec.parsed_artist %} <small>by {{ mb.artist|default:rec.parsed_artist }}</small>{% endif %}</h1>
+        {% if mb.album %}<p class="tagline">from <b>{{ mb.album }}</b>{% if mb.album_year %} ({{ mb.album_year }}){% endif %}{% if mb.album_type %} · {{ mb.album_type|lower }}{% endif %}</p>
+        {% elif track.album %}<p class="tagline">from <b>{{ track.album }}</b></p>{% endif %}
+      {% else %}
+        <h1>{{ mb_artist.name|default:rec.parsed_artist }} <small>(artist)</small></h1>
+        {% if mb_artist.disambiguation %}<p class="tagline">{{ mb_artist.disambiguation }}</p>{% endif %}
+      {% endif %}
+      <div class="meta">
+        {% if mb.length or track.length %}<span>{{ mb.length|default:track.length }}</span>{% endif %}
+        {% if track %}<span class="rating">{{ track.listeners|intcomma }} listeners</span><span>{{ track.playcount|intcomma }} plays</span>{% endif %}
+        {% for t in track.tags|slice:":6" %}<span class="genre">{{ t }}</span>{% endfor %}
+      </div>
+      <div class="links">
+        {% if track.url %}<a href="{{ track.url }}" target="_blank" rel="noopener">Last.fm ↗</a>{% endif %}
+        {% if mb.url %}<a href="{{ mb.url }}" target="_blank" rel="noopener">MusicBrainz ↗</a>{% endif %}
+        {% if mb_artist.url %}<a href="{{ mb_artist.url }}" target="_blank" rel="noopener">MusicBrainz ↗</a>{% endif %}
+        {% if track.album_url %}<a href="{{ track.album_url }}" target="_blank" rel="noopener">Album on Last.fm ↗</a>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if track.wiki %}
+<div class="rec-section"><h2>About the track</h2><p>{{ track.wiki }}</p><p class="trailer-note"><a href="{{ track.url }}" target="_blank" rel="noopener">Read more on Last.fm ↗</a></p></div>
+{% endif %}
+
+{% if rec.parsed_artist or artist_mbid %}
+<div class="rec-section" hx-get="{% url 'integrations:rec_artist' rec.pk %}?mbid={{ artist_mbid|urlencode }}" hx-trigger="load" hx-swap="outerHTML">
+  <h2>About the artist</h2>
+  <p class="trailer-note">Loading from MusicBrainz{% if lastfm_configured %} and Last.fm{% endif %}…</p>
+</div>
+{% endif %}
+
+{% if mb.releases %}
+<div class="rec-section">
+  <h2>Appears on</h2>
+  <ul class="tracklist">
+    {% for r in mb.releases %}
+      <li><span><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title }}</a>{% if r.type %} <span class="n">{{ r.type|lower }}</span>{% endif %}</span><span class="n">{{ r.year }}{% if r.country %} · {{ r.country }}{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% if mb.release_count > 8 %}<p class="trailer-note">+ {{ mb.release_count|add:"-8" }} more release{{ mb.release_count|add:"-8"|pluralize }} listed on MusicBrainz</p>{% endif %}
+</div>
+{% endif %}
+
+{% if not mb and not track and not mb_artist %}
+<div class="rec-section">
+  <p class="trailer-note">
+    {% if errors %}{{ errors|join:" · " }}{% else %}Neither MusicBrainz{% if lastfm_configured %} nor Last.fm{% endif %} could pin down “{{ rec.display_label }}” — the parser may have mangled the artist or title. You can <a href="{{ post.get_absolute_url }}#rec-{{ rec.pk }}">edit it on the post</a>.{% endif %}
+    {% if not lastfm_configured %} Add a Last.fm API key on the <a href="{% url 'integrations:settings' %}">Settings page</a> for listener counts, tags, bios and similar artists.{% endif %}
+  </p>
+</div>
+{% elif errors %}
+<p class="trailer-note" style="margin-top:12px">{{ errors|join:" · " }}</p>
+{% endif %}
+<p class="trailer-note" style="margin-top:18px">Music data from <a href="https://musicbrainz.org/" target="_blank" rel="noopener">MusicBrainz</a>{% if lastfm_configured %}, <a href="https://www.last.fm/" target="_blank" rel="noopener">Last.fm</a>{% endif %} and the <a href="https://coverartarchive.org/" target="_blank" rel="noopener">Cover Art Archive</a>.</p>

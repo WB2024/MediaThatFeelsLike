@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from urllib.parse import urlencode
 
 from .base import BaseClient, ServiceError, best_match, similarity
 
@@ -33,6 +34,13 @@ class NavidromeClient(BaseClient):
 
     def refresh_choices(self):
         return None
+
+    def cover_art_url(self, art_id, size=200):
+        """A browser-loadable getCoverArt URL. Carries a fresh salted token, not the
+        password -- the same thing every Subsonic client puts in every request."""
+        if not art_id:
+            return ""
+        return f"{self.base_url}/rest/getCoverArt.view?" + urlencode({**self._auth(), "id": art_id, "size": size})
 
     def find_song(self, artist, title, _swapped=False):
         query = f"{artist} {title}".strip() if artist else title

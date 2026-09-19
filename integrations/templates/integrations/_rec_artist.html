@@ -1,0 +1,40 @@
+{% load humanize %}
+<div class="rec-section" id="artist-panel">
+  <h2>About {{ mb.name|default:lastfm.name|default:rec.parsed_artist }}</h2>
+  {% if lastfm.bio %}
+    <p>{{ lastfm.bio }}</p>
+    <p class="trailer-note"><a href="{{ lastfm.url }}" target="_blank" rel="noopener">Read more on Last.fm ↗</a></p>
+  {% endif %}
+  {% if mb or lastfm %}
+  <dl class="facts" style="margin-top:10px">
+    {% if mb.type %}<dt>Type</dt><dd>{{ mb.type }}{% if mb.disambiguation %} — {{ mb.disambiguation }}{% endif %}</dd>{% endif %}
+    {% if mb.country %}<dt>From</dt><dd>{{ mb.country }}</dd>{% endif %}
+    {% if mb.years %}<dt>Active</dt><dd>{{ mb.years }}</dd>{% endif %}
+    {% if lastfm.listeners %}<dt>Last.fm</dt><dd>{{ lastfm.listeners|intcomma }} listeners · {{ lastfm.playcount|intcomma }} plays</dd>{% endif %}
+  </dl>
+  {% endif %}
+  {% if mb.links %}
+    <div class="tags" style="margin-top:10px">
+      {% for l in mb.links %}<a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.label }} ↗</a>{% endfor %}
+      {% if mb.url %}<a href="{{ mb.url }}" target="_blank" rel="noopener">MusicBrainz ↗</a>{% endif %}
+    </div>
+  {% endif %}
+  {% if lastfm.tags or mb.tags %}
+    <div class="tags" style="margin-top:10px">{% for t in lastfm.tags|default:mb.tags %}<span>{{ t }}</span>{% endfor %}</div>
+  {% endif %}
+  {% if top %}
+    <h2 style="margin-top:18px">Top tracks</h2>
+    <ul class="tracklist">
+      {% for t in top %}<li><a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.name }}</a><span class="n">{{ t.playcount|intcomma }} plays</span></li>{% endfor %}
+    </ul>
+  {% endif %}
+  {% if lastfm.similar %}
+    <h2 style="margin-top:18px">Similar artists</h2>
+    <div class="tags">{% for s in lastfm.similar %}<a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.name }}</a>{% endfor %}</div>
+  {% endif %}
+  {% if not mb and not lastfm %}
+    <p class="trailer-note">{% if errors %}{{ errors|join:" · " }}{% else %}Nothing found for this artist on MusicBrainz{% if lastfm_configured %} or Last.fm{% endif %}.{% endif %}</p>
+  {% elif errors %}
+    <p class="trailer-note">{{ errors|join:" · " }}</p>
+  {% endif %}
+</div>

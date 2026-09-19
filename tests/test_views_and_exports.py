@@ -316,6 +316,231 @@ def test_rec_trailer_embeds_the_tmdb_match_or_falls_back_gracefully(client, db, 
     assert b'href="https://www.youtube.com/watch?v=abc123"' in r.content
 
 
+# -- recommendation detail pages ------------------------------------------------------
+
+
+def _movie_rec(db, title="Big Fish", year=2003, reddit_id="rd1"):
+    src = Source.objects.get_or_create(subreddit="MoviesThatFeelLike", defaults={"kind": Source.Kind.MOVIES})[0]
+    p = Post.objects.create(source=src, reddit_id=reddit_id, title="Films that feel like a tall tale", permalink="/r/m/", created_utc=timezone.now())
+    return Recommendation.objects.create(post=p, parsed_title=title, parsed_year=year, method="title_year", confidence=0.93, included=True, order=0, comment_author="Mysterio221B", raw_text="Big Fish (2003), obviously")
+
+
+def _configure(service, **fields):
+    from integrations.models import ServiceConfig
+
+    defaults = {"enabled": True, "url": f"http://{service}.test", "api_key": "k"}
+    defaults.update(fields)
+    return ServiceConfig.objects.update_or_create(service=service, defaults=defaults)[0]
+
+
+SHAPED_MOVIE = {
+    "tmdb_id": 587, "title": "Big Fish", "original_title": "", "tagline": "An adventure as big as life itself.", "overview": "Edward Bloom...",
+    "year": "2003", "release_date": "2003-12-10", "runtime": 125, "genres": ["Adventure"], "rating": 7.7, "votes": 7939, "certification": "PG (GB)",
+    "status": "Released", "budget": 70000000, "revenue": 0, "companies": ["Columbia Pictures"], "countries": [], "languages": ["English"], "keywords": ["witch"],
+    "poster": "https://image.tmdb.org/t/p/w500/p.jpg", "backdrop": "https://image.tmdb.org/t/p/w1280/b.jpg",
+    "trailer": {"key": "tr1", "name": "Official Trailer"}, "other_videos": [{"key": "c1", "name": "A clip", "type": "Clip"}],
+    "cast": [{"name": "Ewan McGregor", "character": "Ed Bloom", "photo": "https://image.tmdb.org/t/p/w185/e.jpg"}],
+    "crew": [("Director", "Tim Burton")], "similar": [], "homepage": "", "imdb_url": "https://www.imdb.com/title/tt0319061/", "tmdb_url": "https://www.themoviedb.org/movie/587",
+}
+
+
+def test_rec_detail_movie_page_is_built_from_tmdb(client, db, monkeypatch):
+    from integrations import enrich
+
+    rec = _movie_rec(db)
+    _configure("tmdb", url="https://api.themoviedb.org")
+    _configure("radarr")
+    _configure("jellyfin", enabled=False)  # the dev box's real .env may otherwise auto-seed it
+
+    class FakeTmdb:
+        def __init__(self, config):
+            pass
+
+        def movie_for(self, title, year=None):
+            assert (title, year) == ("Big Fish", 2003)
+            return SHAPED_MOVIE
+
+    monkeypatch.setattr(enrich, "TmdbClient", FakeTmdb)
+    r = client.get(reverse("vibes:rec_detail", args=[rec.pk]))
+    html = r.content.decode()
+    assert r.status_code == 200
+    assert "<h1>Big Fish <small>(2003)</small></h1>" in html and "An adventure as big as life itself." in html
+    assert "Tim Burton" in html and "Ewan McGregor" in html and "PG (GB)" in html
+    assert 'src="https://www.youtube.com/embed/tr1"' in html and "watch?v=c1" in html
+    assert "Mysterio221B" in html and "Big Fish (2003), obviously" in html  # the "from the post" panel
+    # The Radarr card lazy-loads with the TMDB id so it can match exactly, not fuzzily.
+    assert f'hx-get="/integrations/rec/{rec.pk}/card/radarr/?tmdb_id=587" hx-trigger="load"' in html
+    assert "card/jellyfin/" not in html  # Jellyfin isn't configured in this test
+
+
+def test_rec_detail_movie_page_degrades_when_tmdb_is_unconfigured_or_has_no_match(client, db, monkeypatch):
+    from integrations import enrich
+
+    rec = _movie_rec(db)
+    r = client.get(reverse("vibes:rec_detail", args=[rec.pk]))
+    assert r.status_code == 200 and b"Add a TheMovieDB read token" in r.content
+
+    _configure("tmdb", url="https://api.themoviedb.org")
+
+    class NoMatch:
+        def __init__(self, config):
+            pass
+
+        def movie_for(self, title, year=None):
+            return None
+
+    monkeypatch.setattr(enrich, "TmdbClient", NoMatch)
+    r = client.get(reverse("vibes:rec_detail", args=[rec.pk]))
+    assert r.status_code == 200 and b"no confident match" in r.content
+
+
+def test_rec_detail_music_page_is_built_from_musicbrainz_and_lastfm(client, post, monkeypatch):
+    from integrations import enrich
+
+    rec = post.recommendations.get(parsed_title="Fade Into You")
+    _configure("lastfm", url="https://ws.audioscrobbler.com")
+    _configure("lidarr")
+
+    class FakeMB:
+        def search_recording(self, artist, title):
+            return {"mbid": "rec-1", "title": "Fade Into You", "artist": "Mazzy Star", "artist_mbid": "art-1", "length": "4:55",
+                    "album": "So Tonight That I Might See", "album_year": "1993", "album_type": "Album", "release_group_mbid": "rg-1", "release_mbid": "rel-1",
+                    "releases": [{"title": "So Tonight That I Might See", "year": "1993", "type": "Album", "country": "US", "url": "https://musicbrainz.org/release/rel-1"}],
+                    "release_count": 1, "isrcs": [], "url": "https://musicbrainz.org/recording/rec-1"}
+
+    class FakeLastfm:
+        def __init__(self, config):
+            pass
+
+        def track_info(self, artist, track):
+            return {"name": track, "artist": artist, "url": "https://www.last.fm/x", "listeners": 1234567, "playcount": 9999999, "length": "4:55",
+                    "album": "So Tonight That I Might See", "album_url": "", "album_image": "", "tags": ["dream pop"], "wiki": "A hazy classic."}
+
+    monkeypatch.setattr(enrich, "MusicBrainzClient", FakeMB)
+    monkeypatch.setattr(enrich, "LastfmClient", FakeLastfm)
+    r = client.get(reverse("vibes:rec_detail", args=[rec.pk]))
+    html = r.content.decode()
+    assert r.status_code == 200
+    assert "<h1>Fade Into You <small>by Mazzy Star</small></h1>" in html
+    assert "from <b>So Tonight That I Might See</b> (1993)" in html and "1,234,567 listeners" in html and "A hazy classic." in html
+    assert 'src="https://coverartarchive.org/release-group/rg-1/front-500"' in html
+    assert f'hx-get="/integrations/rec/{rec.pk}/artist/?mbid=art-1"' in html  # artist section lazy-loads with the MBID
+    assert f'hx-get="/integrations/rec/{rec.pk}/card/lidarr/?mbid=art-1&album=So%20Tonight%20That%20I%20Might%20See"' in html
+    assert "open.spotify.com/search/" in html and "youtube.com/results" in html
+
+
+def test_rec_detail_music_page_survives_musicbrainz_being_down(client, post, monkeypatch):
+    from integrations import enrich
+    from integrations.clients.base import ServiceError
+
+    rec = post.recommendations.get(parsed_title="Fade Into You")
+
+    class DownMB:
+        def search_recording(self, artist, title):
+            raise ServiceError("MusicBrainz: rate limited (503)")
+
+    monkeypatch.setattr(enrich, "MusicBrainzClient", DownMB)
+    r = client.get(reverse("vibes:rec_detail", args=[rec.pk]))
+    assert r.status_code == 200 and b"rate limited" in r.content and b"Mazzy Star" in r.content
+
+
+def test_rec_card_radarr_reports_presence_and_performs_the_add_action(client, db, monkeypatch):
+    from integrations import enrich
+
+    rec = _movie_rec(db)
+    _configure("radarr")
+    pushed = []
+
+    class FakeRadarr:
+        def __init__(self, config):
+            self.base_url = "http://radarr.test"
+
+        def existing(self, tmdb_id):
+            return {"id": 9, "title": "Big Fish", "year": 2003, "titleSlug": "587", "hasFile": True, "monitored": True, "sizeOnDisk": 1503238553,
+                    "movieFile": {"quality": {"quality": {"name": "WEBDL-480p"}}}} if pushed else None
+
+        def lookup(self, title, year=None):
+            return None, 0.0
+
+    monkeypatch.setattr(enrich, "RadarrClient", FakeRadarr)
+    monkeypatch.setattr(enrich, "push_one", lambda rec, service, playlist_name=None: pushed.append(service))
+
+    r = client.get(reverse("integrations:rec_card", args=[rec.pk, "radarr"]) + "?tmdb_id=587")
+    assert b"Not in Radarr" in r.content and b'"action": "add"' in r.content and b"?tmdb_id=587" in r.content
+
+    r = client.post(reverse("integrations:rec_card", args=[rec.pk, "radarr"]) + "?tmdb_id=587", {"action": "add"}, HTTP_HX_REQUEST="true")
+    assert pushed == ["radarr"]
+    assert b'href="http://radarr.test/movie/587"' in r.content and "Downloaded · WEBDL-480p · 1.4 GB".encode() in r.content
+    assert b'"action": "add"' not in r.content  # nothing left to add
+
+    assert client.get(reverse("integrations:rec_card", args=[rec.pk, "nope"])).status_code == 400
+
+
+def test_rec_card_lidarr_matches_by_musicbrainz_id_and_links_the_album(client, post, monkeypatch):
+    from integrations import enrich
+
+    rec = post.recommendations.get(parsed_title="Fade Into You")
+    _configure("lidarr")
+
+    class FakeLidarr:
+        api = "/api/v1"
+
+        def __init__(self, config):
+            self.base_url = "http://lidarr.test"
+
+        def artists(self):
+            return {"art-1": {"id": 5, "artistName": "Mazzy Star", "foreignArtistId": "art-1", "monitored": True, "statistics": {"trackFileCount": 21, "albumCount": 4, "sizeOnDisk": 0}}}
+
+        def get(self, path, **params):
+            assert path == "/api/v1/album" and params == {"artistId": 5}
+            return [{"title": "So Tonight That I Might See", "foreignAlbumId": "alb-1", "releaseDate": "1993-10-05", "statistics": {"trackFileCount": 10, "trackCount": 10}},
+                    {"title": "Among My Swan", "foreignAlbumId": "alb-2", "releaseDate": "1996-10-29", "statistics": {"trackFileCount": 0, "trackCount": 12}}]
+
+    monkeypatch.setattr(enrich, "LidarrClient", FakeLidarr)
+    r = client.get(reverse("integrations:rec_card", args=[rec.pk, "lidarr"]) + "?mbid=art-1&album=So%20Tonight%20That%20I%20Might%20See")
+    html = r.content.decode()
+    assert 'href="http://lidarr.test/artist/art-1"' in html and "21 tracks on disk · 4 albums · monitored" in html
+    assert 'href="http://lidarr.test/album/alb-1"' in html and "So Tonight That I Might See (1993) · 10/10 tracks" in html
+    assert '"action": "add"' not in html  # already have every track of that album
+
+
+def test_rec_slskd_search_lists_candidates_and_download_queues_the_chosen_file(client, post, monkeypatch):
+    from integrations import enrich
+
+    rec = post.recommendations.get(parsed_title="Fade Into You")
+    _configure("slskd")
+    queued = []
+
+    class FakeSlskd:
+        def __init__(self, config):
+            self.config = config
+
+        def ranked(self, artist, title, options=None, limit=12, retries=0):
+            assert retries == 1  # a person is waiting -- worth one retry when Soulseek drops the search
+            return [{"username": "flac_hoarder", "file": {"filename": r"Mazzy Star\So Tonight\01 Fade Into You.flac", "size": 31504876, "bitDepth": 16, "sampleRate": 44100, "length": 295}, "score": 4.5, "free_slot": False, "queue": 12}]
+
+        def enqueue(self, username, file):
+            queued.append((username, file))
+
+    monkeypatch.setattr(enrich, "SlskdClient", FakeSlskd)
+    r = client.post(reverse("integrations:rec_slskd_search", args=[rec.pk]), HTTP_HX_REQUEST="true")
+    html = r.content.decode()
+    assert "01 Fade Into You.flac" in html and "FLAC · 16-bit/44.1kHz · 4:55 · 30.0 MB" in html and "queue of 12" in html
+    assert 'name="filename" value="Mazzy Star\\So Tonight\\01 Fade Into You.flac"' in html  # backslashes survive as a form value
+
+    r = client.post(reverse("integrations:rec_slskd_download", args=[rec.pk]), {"username": "flac_hoarder", "filename": r"Mazzy Star\So Tonight\01 Fade Into You.flac", "size": "31504876"}, HTTP_HX_REQUEST="true")
+    assert queued == [("flac_hoarder", {"filename": r"Mazzy Star\So Tonight\01 Fade Into You.flac", "size": 31504876})]
+    assert "✓ queued".encode() in r.content
+    rec.refresh_from_db()
+    assert rec.integration_state["slskd"]["status"] == "queued" and "picked by hand" in rec.integration_state["slskd"]["detail"]
+
+
+def test_rec_row_title_links_to_its_detail_page(client, post):
+    rec = post.recommendations.get(parsed_title="Fade Into You")
+    r = client.get(post.get_absolute_url())
+    assert f'<a href="/rec/{rec.pk}/"'.encode() in r.content
+
+
 def test_settings_page_and_encrypted_save(client, db, settings):
     from integrations.models import ServiceConfig
 

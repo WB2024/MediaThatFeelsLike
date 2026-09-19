@@ -15,6 +15,7 @@ class ServiceConfig(models.Model):
         NAVIDROME = "navidrome", "Navidrome"
         SLSKD = "slskd", "slskd"
         TMDB = "tmdb", "TheMovieDB"
+        LASTFM = "lastfm", "Last.fm"
 
     service = models.CharField(max_length=20, choices=Service.choices, unique=True)
     enabled = models.BooleanField(default=True)
@@ -53,7 +54,7 @@ class ServiceConfig(models.Model):
     def kind(self):
         """Which section this service acts on."""
         return "movies" if self.service in (self.Service.RADARR, self.Service.TMDB) else (
-            "music" if self.service in (self.Service.LIDARR, self.Service.NAVIDROME, self.Service.SLSKD) else "both"
+            "music" if self.service in (self.Service.LIDARR, self.Service.NAVIDROME, self.Service.SLSKD, self.Service.LASTFM) else "both"
         )
 
     @classmethod
@@ -97,4 +98,5 @@ def service_flags(kind, services=None):
         "can_navidrome": kind == "music" and ServiceConfig.Service.NAVIDROME in services,
         "can_slskd": kind == "music" and ServiceConfig.Service.SLSKD in services,
         "can_tmdb": kind == "movies" and ServiceConfig.Service.TMDB in services,
+        "can_lastfm": kind == "music" and ServiceConfig.Service.LASTFM in services,
     }

@@ -111,6 +111,21 @@ def _rec_list_response(request, post):
     return render(request, "vibes/_rec_list.html", {**_rec_context(post), "oob_count": True})
 
 
+def rec_detail(request, pk):
+    """A recommendation's own page: everything TheMovieDB (movies) or MusicBrainz +
+    Last.fm (music) know about it, plus lazily-loaded "is it in Radarr/Lidarr/Jellyfin/
+    Navidrome" cards and a Soulseek picker. The primary metadata is fetched here so the
+    hero renders with the page; everything per-service loads via htmx afterwards."""
+    from integrations import enrich
+    from integrations.models import service_flags
+
+    rec = get_object_or_404(Recommendation.objects.select_related("post__source"), pk=pk)
+    kind = rec.post.source.kind
+    context = {"rec": rec, "post": rec.post, "kind": kind, **service_flags(kind)}
+    context.update(enrich.movie_page(rec) if kind == "movies" else enrich.music_page(rec))
+    return render(request, "vibes/rec_detail.html", context)
+
+
 def rec_trailer(request, pk):
     """htmx: lazy-loaded the first time a movie recommendation's "watch trailer here"
     is expanded. Looks the title up on TheMovieDB and embeds the best official trailer

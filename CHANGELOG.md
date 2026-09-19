@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Recommendation detail pages** (`/rec/<pk>/`, linked from every row's title). Movies:
+  everything TheMovieDB returns in one `append_to_response` call -- backdrop, poster,
+  tagline, synopsis, rating/votes, runtime, age rating (GB preferred), genres, embedded
+  trailer + every other listed video, cast with photos, headline crew, budget/box office,
+  companies, countries, languages, keywords, "more like this". Music: MusicBrainz pins
+  the recording (canonical-version scoring, see ARCHITECTURE) and yields the artist MBID
+  + Cover Art Archive keys; Last.fm adds listeners/plays, tags, track blurb, artist bio,
+  similar artists, top tracks; MusicBrainz's artist lookup adds type/country/years and
+  curated external links (website, Wikipedia, Discogs, Bandcamp, Spotify, Apple Music,
+  Twitter/Instagram…). Down the side: live "in your library" cards for Radarr / Lidarr /
+  Jellyfin / Navidrome (present? downloaded? quality/size? direct link into that app;
+  add / add-to-playlist actions if not), a Soulseek picker that lists every plausible copy
+  with format, bitrate, size, peer, free-slot/queue so you choose rather than trust the
+  automatic best guess, and the YouTube/Spotify/IMDb/TMDB/Last.fm/MusicBrainz links. All
+  per-service panels are htmx-lazy so the page renders with the hero and fills in. New
+  clients: `musicbrainz.py` (keyless, throttled, proper User-Agent), `lastfm.py` (new
+  `lastfm` service on the Settings page, `LASTFM_API_KEY` to seed). 17 new tests.
 - **TheMovieDB trailer embed**: a movie recommendation gets a "▶ watch trailer here"
   toggle (lazy-loaded via htmx, once, on first expand) that embeds the official trailer
   right on the page instead of only linking out. `TmdbClient.best_trailer()` searches

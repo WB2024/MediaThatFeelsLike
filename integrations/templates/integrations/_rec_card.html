@@ -1,0 +1,22 @@
+{% with st=card.state %}
+<div class="svc-card {% if card.present %}present{% elif card.present == False %}absent{% endif %}" id="card-{{ card.service }}">
+  {% if card.thumb %}<img class="thumb" src="{{ card.thumb }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}
+  <div class="name"><span class="dot"></span>{{ card.label }}</div>
+  <div class="tools">
+    {% if card.url %}<a class="btn small" href="{{ card.url }}" target="_blank" rel="noopener">Open ↗</a>{% endif %}
+    {% for a in card.actions %}
+      <button class="btn small ghost" hx-post="{% url 'integrations:rec_card' rec.pk card.service %}{% if hints_qs %}?{{ hints_qs }}{% endif %}" hx-vals='{"action": "{{ a.key }}"}' hx-target="#card-{{ card.service }}" hx-swap="outerHTML" {% if a.prompt %}hx-prompt="{{ a.prompt }}"{% endif %}>
+        <span class="label">{{ a.label }}</span><span class="htmx-indicator">working…</span>
+      </button>
+    {% endfor %}
+  </div>
+  <div class="sub">
+    {% if card.error %}<span style="color:var(--danger)">{{ card.error }}</span>
+    {% elif not card.configured %}not configured
+    {% else %}{% if card.title %}<b>{{ card.title }}</b> · {% endif %}{{ card.sub }}{% if card.album_url %} · <a href="{{ card.album_url }}" target="_blank" rel="noopener">{{ card.album_label }} ↗</a>{% elif card.album_label %} · {{ card.album_label }}{% endif %}{% endif %}
+  </div>
+  {% if st %}
+    <div class="sub"><span class="chip {% if st.status == 'added' or st.status == 'exists' or st.status == 'playlisted' or st.status == 'queued' %}ok{% elif st.status == 'error' or st.status == 'not_found' %}err{% else %}warn{% endif %}">{{ st.status }}</span> {{ st.detail|truncatechars:110 }}</div>
+  {% endif %}
+</div>
+{% endwith %}

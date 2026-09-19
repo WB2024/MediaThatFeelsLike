@@ -27,6 +27,20 @@ on the Settings page: it expands inline to the official trailer, embedded right 
 the page, with a direct "open on YouTube" link underneath for the trailers whose owner has
 disabled embedding (common for official studio uploads).
 
+Every recommendation also has **its own page** (click its title). For a film that's
+everything TheMovieDB knows: backdrop and poster, tagline, synopsis, rating and votes,
+runtime, age rating, genres, the embedded trailer plus every other clip TMDB lists,
+cast with photos, director/writers/composer, budget and box office, keywords, and a
+"more like this" strip. For a track it's MusicBrainz + Last.fm + the Cover Art Archive:
+album art, which album it's from, length, listener and play counts, tags, a track blurb,
+the artist's bio, active years, external links (website, Wikipedia, Discogs, Spotify,
+Bandcamp…), top tracks, similar artists, and every release it appears on. Down the side,
+**"In your library"** checks Radarr / Lidarr / Jellyfin / Navidrome live — is it there,
+downloaded, what quality, with a link straight to it in that app — and offers the add /
+playlist actions if not; a **Soulseek** panel searches slskd and lists every plausible
+copy (format, bitrate, size, who has it, free slot or queue) so you can pick one by hand
+instead of trusting the automatic best guess.
+
 From there:
 
 - **Export** the list as CSV, plain text, or M3U/M3U8 (with real library paths when
@@ -114,8 +128,9 @@ Everything is in `.env` (see `.env.example` for every key):
   `REDDIT_FETCH_USER_AGENT`, optional `REDDIT_CLIENT_ID` / `SECRET`
 - `RADARR_URL` / `RADARR_API_KEY`, `LIDARR_URL` / `LIDARR_API_KEY`, `JELLYFIN_URL` /
   `JELLYFIN_API_KEY`, `NAVIDROME_URL` / `NAVIDROME_USERNAME` / `NAVIDROME_PASSWORD`,
-  `SLSKD_URL` / `SLSKD_API_KEY`, `TMDB_API_KEY` — only used to seed the Settings page on
-  first run; the Settings page is the source of truth afterwards
+  `SLSKD_URL` / `SLSKD_API_KEY`, `TMDB_API_KEY`, `LASTFM_API_KEY` — only used to seed the
+  Settings page on first run; the Settings page is the source of truth afterwards.
+  (MusicBrainz and the Cover Art Archive need no key at all.)
 - `MEDIA_DATA_DIR` — where cached post images live. Leave unset for a `media`
   subfolder next to the sqlite DB. Images are by far the largest and fastest-growing
   thing this app stores, so point this at different (e.g. larger, network-attached)

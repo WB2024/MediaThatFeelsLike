@@ -306,6 +306,57 @@ the full YouTube Data API (which embedding via TMDB was specifically chosen to a
 exact resolved video underneath the iframe, labelled as the thing that "always works" --
 the embed is a bonus when the uploader allows it, not the only way to reach the video.
 
+### Recommendation detail pages
+
+`GET /rec/<pk>/` (`vibes.views.rec_detail`) gives each recommendation its own page.
+`integrations/enrich.py` is the orchestration layer: "what does every configured service
+know about this one recommendation", with every function degrading to "nothing known"
+plus an inline error string rather than raising -- a page about a film must still render
+when Jellyfin is down, and "TMDB has never heard of it" is a normal outcome.
+
+**Two-speed loading.** The primary provider is fetched synchronously so the hero renders
+with the page (TMDB for movies: one `/movie/{id}?append_to_response=videos,credits,
+images,release_dates,keywords,similar,external_ids` call after the search; MusicBrainz
+recording search + Last.fm `track.getInfo` for music). Everything else is a separate
+htmx partial that loads after: each "in your library" card
+(`integrations.views.rec_card`, `GET` to check / `POST action=add|playlist` to act then
+re-check, hints like the TMDB id or MusicBrainz artist id riding along as query params
+so a match is exact), the artist section (`rec_artist`), and the Soulseek picker
+(`rec_slskd_search` / `rec_slskd_download`). This isn't just perceived speed: MusicBrainz
+allows ~1 request/second, and splitting the recording lookup (page) from the artist
+lookup (panel) puts an htmx round-trip between them instead of a `sleep`.
+
+**MusicBrainz** (`clients/musicbrainz.py`) is deliberately *not* a `ServiceConfig`
+service: no key, fixed host, nothing to configure. It does enforce the two things their
+API etiquette requires -- a descriptive User-Agent with a contact URL, and a module-level
+throttle to one call per second (they return 503 otherwise). The recording search scores
+candidates itself rather than trusting MusicBrainz's relevance `score`: a popular track
+exists as several "recordings" (album master, live take, piano version) that all match
+the title equally, so the one appearing on the most official, plain-album releases wins
+-- found live when "Easier to Run" resolved to a piano bootleg's odd release. Its real
+payoff is the artist MBID, which is exactly what Lidarr keys artists by
+(`foreignArtistId`), so the Lidarr card matches by id (and links `/artist/{mbid}` and
+`/album/{foreignAlbumId}`, both verified to resolve in Lidarr's UI), and which the Cover
+Art Archive indexes by (`/release-group/{mbid}/front-500`, with the release and a Last.fm
+image as fallbacks the `<img>` walks through on error).
+
+**Last.fm** (`clients/lastfm.py`) is the social layer -- listeners, plays, tags, bios,
+similar artists, top tracks. Read-only methods need only the API key as a query param
+(no signing; that's for scrobbling), sent via `session.params` so it rides on every call.
+Its image arrays are almost always the same grey placeholder now, so they're dropped by
+hash; its bio/wiki HTML carries a trailing "Read more on Last.fm" anchor that's stripped
+and re-rendered as the app's own link.
+
+**Soulseek picker.** `SlskdClient.ranked()` is the scoring loop that `find_best` used
+to contain, now returning the whole ordered list so a person can choose; `find_best` is
+its first row. It gained an optional retry: observed live, the Soulseek server silently
+drops a search fired soon after another (back-to-back searches for hugely popular tracks
+came back empty most of the time, regardless of query), so the interactive picker retries
+once after a pause where a person is waiting for a thorough answer, while the batch push
+path doesn't, keeping its per-item time budget honest. Each row is a small `<form>` with
+hidden inputs rather than `hx-vals` JSON, because Soulseek filenames are full
+backslash-separated paths and a form value needs no escaping gymnastics.
+
 ## Glance dashboard widget
 
 `vibes/api.py` is a small, deliberately unstable JSON API (no versioning, no auth beyond
