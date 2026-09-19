@@ -20,7 +20,7 @@
   </div>
   <div class="ops">
     {% if post.source.is_music %}
-      {% if rec.search_term %}{% with q=rec.search_term %}<a class="btn small ghost" href="https://www.youtube.com/results?search_query={{ q|urlencode }}" target="_blank" rel="noopener" title="Search YouTube for this track">▶ Play</a>{% endwith %}{% endif %}
+      {% if rec.search_term %}{% with q=rec.search_term %}<a class="btn small ghost" href="https://www.youtube.com/results?search_query={{ q|urlencode }}" target="_blank" rel="noopener" title="Search YouTube for this track">▶ Play</a><a class="btn small ghost" href="https://open.spotify.com/search/{{ q|urlencode }}" target="_blank" rel="noopener" title="Search Spotify for this track">Spotify</a>{% endwith %}{% endif %}
     {% else %}
       {% if rec.parsed_title %}{% with q=rec.display_label|add:" trailer" %}<a class="btn small ghost" href="https://www.youtube.com/results?search_query={{ q|urlencode }}" target="_blank" rel="noopener" title="Search YouTube for the trailer">▶ Trailer</a>{% endwith %}{% endif %}
     {% endif %}

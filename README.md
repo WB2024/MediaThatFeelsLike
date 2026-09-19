@@ -20,7 +20,8 @@ of recommendations parsed out of the comments — with the source comment one cl
 tick-boxes to curate the list, inline editing, and manual additions. Hover a recommendation
 for a one-click **▶ Trailer** (movies) or **▶ Play** (music) button that opens a YouTube
 search for it in a new tab — no setup, no API key, just a well-formed search query; YouTube's
-own ranking reliably puts the actual trailer or song first.
+own ranking reliably puts the actual trailer or song first. Music recommendations also get
+a **Spotify** button alongside it, straight to a search on `open.spotify.com`.
 
 From there:
 

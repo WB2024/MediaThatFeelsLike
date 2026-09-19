@@ -15,6 +15,11 @@ def youtube_query(content):
     return unquote(m.group(1).decode()) if m else None
 
 
+def spotify_query(content):
+    m = re.search(rb"open\.spotify\.com/search/([^\"&]+)", content)
+    return unquote(m.group(1).decode()) if m else None
+
+
 @pytest.fixture
 def post(db):
     src = Source.objects.create(subreddit="SongsThatFeelLikeThis", kind=Source.Kind.MUSIC)
@@ -69,6 +74,8 @@ def test_youtube_links_search_the_song_or_the_trailer(client, post, db):
     r = client.get(post.get_absolute_url())  # music fixture: Mazzy Star - Fade Into You
     assert b"\xe2\x96\xb6 Play" in r.content and b"\xe2\x96\xb6 Trailer" not in r.content
     assert youtube_query(r.content) == "Mazzy Star Fade Into You"
+    assert b"Spotify" in r.content
+    assert spotify_query(r.content) == "Mazzy Star Fade Into You"
 
     src = Source.objects.create(subreddit="MoviesThatFeelLike", kind=Source.Kind.MOVIES)
     movie_post = Post.objects.create(source=src, reddit_id="mv1", title="movies that feel like this", permalink="/r/y/", created_utc=timezone.now())
@@ -76,6 +83,7 @@ def test_youtube_links_search_the_song_or_the_trailer(client, post, db):
     r = client.get(movie_post.get_absolute_url())
     assert b"\xe2\x96\xb6 Trailer" in r.content and b"\xe2\x96\xb6 Play" not in r.content
     assert youtube_query(r.content) == "Drive (2011) trailer"
+    assert b"Spotify" not in r.content  # movies have no Spotify link -- there's no trailer catalogue there
 
 
 def test_api_hot_only_lists_posts_with_a_cached_image(client, post):

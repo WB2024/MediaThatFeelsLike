@@ -21,6 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   push. Deliberately just a search link, not a call to the YouTube Data API: a
   well-formed query already reliably surfaces the real trailer/song as the first or
   second result, and skipping the API sidesteps needing a Google API key and its quota.
+  Music rows also get a **Spotify** button next to it, same query, straight to
+  `open.spotify.com/search/<query>` -- same reasoning (no Spotify API/app credentials,
+  its own search is good enough), and useful for anyone whose library lives there rather
+  than on Navidrome/Jellyfin.
 - **slskd Glance widget, upgraded**: `GET /integrations/api/slskd/` aggregates slskd's
   own transfer list in Python (peer + directory groups, not raw per-file JSON) so the
   Media page's slskd widget can show *what's actually downloading right now* -- a
