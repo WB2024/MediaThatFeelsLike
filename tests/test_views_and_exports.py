@@ -241,6 +241,32 @@ def test_push_rec_updates_only_that_recommendations_chip(client, post, monkeypat
     other.refresh_from_db()
     assert rec.integration_state["slskd"]["status"] == "queued"
     assert other.integration_state == {}  # the other row on the same post is untouched
+    # slskd has no per-item page to link to -- its chip must stay a plain, non-clickable span.
+    assert b'<span class="chip ok" title="queued Fade Into You">slskd: queued</span>' in r.content
+
+
+def test_radarr_exists_chip_links_to_the_movie_in_radarr(client, db, monkeypatch):
+    from integrations import push as push_module
+    from integrations.models import ServiceConfig
+
+    src = Source.objects.create(subreddit="MoviesThatFeelLike", kind=Source.Kind.MOVIES)
+    movie_post = Post.objects.create(source=src, reddit_id="mv2", title="t", permalink="/r/y2/", created_utc=timezone.now())
+    rec = Recommendation.objects.create(post=movie_post, parsed_title="Drive", parsed_year=2011, method="title_year", confidence=0.9, included=True, order=0)
+    ServiceConfig.objects.create(service="radarr", enabled=True, url="http://radarr.test", api_key="k")
+
+    class FakeRadarr:
+        config = ServiceConfig.get("radarr")
+
+        def push(self, r):
+            return "exists", f"already in Radarr: {r.parsed_title} ({r.parsed_year})", "http://radarr.test/movie/drive-2011"
+
+    monkeypatch.setattr(push_module, "client_for", lambda service: FakeRadarr())
+    r = client.post(reverse("integrations:push_rec", args=[rec.pk, "radarr"]), HTTP_HX_REQUEST="true")
+    assert r.status_code == 200
+    assert b'<a class="chip ok" href="http://radarr.test/movie/drive-2011" target="_blank" rel="noopener"' in r.content
+    assert b"radarr: exists" in r.content
+    rec.refresh_from_db()
+    assert rec.integration_state["radarr"]["url"] == "http://radarr.test/movie/drive-2011"
 
 
 def test_settings_page_and_encrypted_save(client, db, settings):

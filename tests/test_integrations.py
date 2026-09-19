@@ -47,10 +47,11 @@ def test_similarity_normalises():
 
 def test_radarr_push_adds_with_year_preference():
     c = RadarrClient(cfg("radarr", root_folder="/movies", quality_profile_id=3))
-    lookup = [{"title": "Heat", "year": 1995, "tmdbId": 949}, {"title": "Heat", "year": 1972, "tmdbId": 111}]
+    lookup = [{"title": "Heat", "year": 1995, "tmdbId": 949, "titleSlug": "heat-1995"}, {"title": "Heat", "year": 1972, "tmdbId": 111, "titleSlug": "heat-1972"}]
     calls = stub(c, {("GET", "/api/v3/movie/lookup"): lookup, ("GET", "/api/v3/movie"): [], ("POST", "/api/v3/movie"): {"id": 1}})
-    status, detail = c.push(rec("Heat", year=1972))
+    status, detail, url = c.push(rec("Heat", year=1972))
     assert status == "added" and "1972" in detail
+    assert url == "http://svc.test/movie/heat-1972"  # links the chip straight to the new movie's Radarr page
     payload = [k["json"] for m, p, k in calls if m == "POST"][0]
     assert payload["tmdbId"] == 111 and payload["qualityProfileId"] == 3 and payload["rootFolderPath"] == "/movies"
     assert payload["addOptions"]["searchForMovie"] is True
@@ -58,10 +59,12 @@ def test_radarr_push_adds_with_year_preference():
 
 def test_radarr_reports_existing_and_not_found():
     c = RadarrClient(cfg("radarr", root_folder="/m", quality_profile_id=1))
-    stub(c, {("GET", "/api/v3/movie/lookup"): [{"title": "Drive", "year": 2011, "tmdbId": 64690, "id": 7}]})
-    assert c.push(rec("Drive", year=2011))[0] == "exists"
+    stub(c, {("GET", "/api/v3/movie/lookup"): [{"title": "Drive", "year": 2011, "tmdbId": 64690, "id": 7, "titleSlug": "drive-2011"}]})
+    status, detail, url = c.push(rec("Drive", year=2011))
+    assert status == "exists" and url == "http://svc.test/movie/drive-2011"
     stub(c, {("GET", "/api/v3/movie/lookup"): [{"title": "Something Else Entirely", "year": 1999, "tmdbId": 1}]})
-    assert c.push(rec("Drive"))[0] == "not_found"
+    status, detail, url = c.push(rec("Drive"))
+    assert status == "not_found" and url is None
 
 
 def test_radarr_requires_setup():

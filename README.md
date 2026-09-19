@@ -148,7 +148,8 @@ leave the name prompt blank and it defaults to "MediaThatFeelsLike Picks".
 
 - **Radarr**: lookup by title (+year when known), add monitored with the chosen root
   folder / quality profile, search immediately (toggle). Already-present films are
-  reported, not duplicated.
+  reported, not duplicated. Either way the row's "radarr: added"/"radarr: exists" chip
+  links straight to that film's own page in Radarr, opened in a new tab.
 - **Lidarr** has no per-track concept, so a track is pushed as the album/single that
   carries it (album lookup by `Artist Title`, swapped order tried too); if none can be
   identified the artist is added unmonitored for hand-picking. Lidarr leaves a freshly

@@ -4,6 +4,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Radarr chip links to the movie**: the "radarr: added"/"radarr: exists" chip on a
+  recommendation row is now a link straight to that film's own page in Radarr (new tab).
+  `RadarrClient.push()` returns the movie's `titleSlug` alongside the existing
+  status/detail whenever it has one; `integrations.push._push_arr` and `_record` accept
+  it as an optional third element so Lidarr/slskd's still-2-tuple `push()` need no
+  changes, and it's threaded through to `integration_state[service]["url"]`, which
+  `_rec_row.html` renders as an `<a>` instead of a plain `<span>` only when present.
+  Verified against a real Radarr instance (chip correctly opened the exact film's page).
+
 ### Changed
 
 - Recommendations on a vibe page now sort by mention count (most-mentioned first), then

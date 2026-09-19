@@ -40,12 +40,15 @@ def client_for(service):
     return CLIENTS[service](config)
 
 
-def _record(rec, service, status, detail):
+def _record(rec, service, status, detail, url=None):
     state = dict(rec.integration_state or {})
-    state[service] = {"status": status, "detail": detail[:300], "at": timezone.now().isoformat(timespec="seconds")}
+    entry = {"status": status, "detail": detail[:300], "at": timezone.now().isoformat(timespec="seconds")}
+    if url:
+        entry["url"] = url
+    state[service] = entry
     rec.integration_state = state
     rec.save(update_fields=["integration_state", "updated_at"])
-    return {"rec": rec, "status": status, "detail": detail}
+    return {"rec": rec, "status": status, "detail": detail, "url": url}
 
 
 def push_post(post, service, playlist_name=None):
@@ -140,11 +143,13 @@ def _push_slskd(client, recs):
 def _push_arr(client, service, recs):
     results = []
     for rec in recs:
+        url = None
         try:
-            status, detail = client.push(rec)
+            status, detail, *rest = client.push(rec)
+            url = rest[0] if rest else None
         except ServiceError as exc:
             status, detail = "error", str(exc)
-        results.append(_record(rec, service, status, detail))
+        results.append(_record(rec, service, status, detail, url))
     ok = sum(1 for r in results if r["status"] in OK_STATUSES)
     return {"results": results, "summary": f"{ok} of {len(results)} handled by {client.config.get_service_display()}", "error": None}
 

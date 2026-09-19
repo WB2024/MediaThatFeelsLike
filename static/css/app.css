@@ -196,6 +196,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .chip.ok { color: var(--ok); border-color: rgba(63, 217, 122, .35); }
 .chip.err { color: var(--danger); border-color: rgba(255, 92, 92, .35); }
 .chip.warn { color: var(--warn); border-color: rgba(240, 180, 41, .35); }
+/* .rec .sub a's own color rule otherwise beats these on specificity for a linked chip */
+.rec .sub a.chip.ok { color: var(--ok); }
+.rec .sub a.chip.err { color: var(--danger); }
+.rec .sub a.chip.warn { color: var(--warn); }
 .rec details { margin-top: 4px; }
 .rec details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .rec blockquote { margin: 6px 0 0; padding: 8px 10px; border-left: 2px solid var(--border); color: #c9ced6; font-size: 13px; white-space: pre-wrap; max-height: 220px; overflow: auto; }

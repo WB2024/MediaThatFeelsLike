@@ -78,12 +78,16 @@ class RadarrClient(BaseClient):
         return self.post(f"{self.api}/movie", json=payload)
 
     def push(self, rec):
-        """Add one recommendation. Returns (status, detail)."""
+        """Add one recommendation. Returns (status, detail, url) -- url is the movie's
+        own page in Radarr's web UI when known, so the caller can link straight to it."""
         movie, score = self.lookup(rec.parsed_title, rec.parsed_year)
         if not movie:
-            return "not_found", f"no confident match in Radarr's lookup (best {score:.2f})"
+            return "not_found", f"no confident match in Radarr's lookup (best {score:.2f})", None
         label = f"{movie['title']} ({movie.get('year')})"
-        if movie.get("id") or self.existing(movie["tmdbId"]):
-            return "exists", f"already in Radarr: {label}"
+        existing = movie if movie.get("id") else self.existing(movie["tmdbId"])
+        slug = (existing or movie).get("titleSlug")
+        url = f"{self.base_url}/movie/{slug}" if slug else None
+        if existing:
+            return "exists", f"already in Radarr: {label}", url
         self.add(movie, search=self.config.options.get("search_on_add", True))
-        return "added", f"added + searching: {label}"
+        return "added", f"added + searching: {label}", url
