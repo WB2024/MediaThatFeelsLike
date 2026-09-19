@@ -32,6 +32,21 @@ def test_section_and_detail_render(client, post):
     assert b"1 excluded" in r.content
 
 
+def test_recommendations_sorted_by_mention_count_descending(client, db):
+    src = Source.objects.create(subreddit="SongsThatFeelLikeThis", kind=Source.Kind.MUSIC)
+    p = Post.objects.create(source=src, reddit_id="mc1", title="t", permalink="/z/", created_utc=timezone.now())
+    # Confidence deliberately doesn't track mention_count, so a naive confidence-first
+    # sort would put "One Mention" before "Two Mentions".
+    Recommendation.objects.create(post=p, parsed_title="One Mention", method="short_comment", confidence=0.95, mention_count=1, included=True, order=0)
+    Recommendation.objects.create(post=p, parsed_title="Five Mentions", method="short_comment", confidence=0.6, mention_count=5, included=True, order=1)
+    Recommendation.objects.create(post=p, parsed_title="Two Mentions", method="short_comment", confidence=0.7, mention_count=2, included=True, order=2)
+
+    r = client.get(p.get_absolute_url())
+    content = r.content.decode()
+    positions = {t: content.index(t) for t in ("Five Mentions", "Two Mentions", "One Mention")}
+    assert positions["Five Mentions"] < positions["Two Mentions"] < positions["One Mention"]
+
+
 def test_tile_grid_gallery_cycling_markup(client, post):
     from vibes.models import PostImage
 

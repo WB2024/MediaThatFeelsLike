@@ -96,7 +96,7 @@ def _rec_context(post):
     this always computes them rather than only the page-load view bothering to."""
     from integrations.models import service_flags  # local import: avoid app-load cycles
 
-    recs = list(post.recommendations.order_by("order", "-confidence"))
+    recs = list(post.recommendations.order_by("-mention_count", "-confidence", "order"))
     return {
         "post": post,
         "recs": recs,

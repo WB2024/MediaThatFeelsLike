@@ -4,6 +4,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Recommendations on a vibe page now sort by mention count (most-mentioned first), then
+  confidence, then the parser's own order -- previously it was parser-order first, so a
+  title several separate commenters agreed on could still land below a single high-
+  confidence one-off. One-line change in `_rec_context`'s `order_by`, shared by the
+  initial page load and every htmx partial re-render.
+
 ### Added
 
 - **YouTube trailer/song links**: every recommendation row gets a hover-revealed
