@@ -21,6 +21,12 @@
     <details><summary>source comment{% if rec.comment_author %} · u/{{ rec.comment_author }}{% endif %}</summary>
       <blockquote>{{ rec.raw_text|truncatechars:1200 }}</blockquote></details>
     {% endif %}
+    {% if can_tmdb %}
+    <details hx-get="{% url 'vibes:rec_trailer' rec.pk %}" hx-trigger="toggle once" hx-target="find .trailer-slot" hx-swap="innerHTML">
+      <summary>▶ watch trailer here</summary>
+      <div class="trailer-slot">Loading…</div>
+    </details>
+    {% endif %}
   </div>
   <div class="ops">
     {% if post.source.is_music %}

@@ -269,6 +269,53 @@ def test_radarr_exists_chip_links_to_the_movie_in_radarr(client, db, monkeypatch
     assert rec.integration_state["radarr"]["url"] == "http://radarr.test/movie/drive-2011"
 
 
+def test_movie_row_offers_trailer_embed_only_when_tmdb_configured(client, db):
+    from integrations.models import ServiceConfig
+
+    src = Source.objects.create(subreddit="MoviesThatFeelLike", kind=Source.Kind.MOVIES)
+    movie_post = Post.objects.create(source=src, reddit_id="mv3", title="t", permalink="/r/y3/", created_utc=timezone.now())
+    Recommendation.objects.create(post=movie_post, parsed_title="Drive", parsed_year=2011, method="title_year", confidence=0.9, included=True, order=0)
+
+    r = client.get(movie_post.get_absolute_url())
+    assert b"watch trailer here" not in r.content  # not configured yet -- no toggle offered
+
+    # update_or_create, not create: the page load above already auto-created (unconfigured)
+    # rows for every service via ServiceConfig.all_services().
+    ServiceConfig.objects.update_or_create(service="tmdb", defaults={"enabled": True, "url": "https://api.themoviedb.org", "api_key": "k"})
+    r = client.get(movie_post.get_absolute_url())
+    assert b"watch trailer here" in r.content
+
+
+def test_rec_trailer_embeds_the_tmdb_match_or_falls_back_gracefully(client, db, monkeypatch):
+    from integrations.clients import tmdb as tmdb_module
+    from integrations.models import ServiceConfig
+
+    src = Source.objects.create(subreddit="MoviesThatFeelLike", kind=Source.Kind.MOVIES)
+    movie_post = Post.objects.create(source=src, reddit_id="mv4", title="t", permalink="/r/y4/", created_utc=timezone.now())
+    rec = Recommendation.objects.create(post=movie_post, parsed_title="Drive", parsed_year=2011, method="title_year", confidence=0.9, included=True, order=0)
+
+    # Not configured at all -- graceful fallback message, no crash.
+    r = client.get(reverse("vibes:rec_trailer", args=[rec.pk]))
+    assert b"No trailer found" in r.content
+
+    # update_or_create: the request above already auto-created an (unconfigured) row.
+    ServiceConfig.objects.update_or_create(service="tmdb", defaults={"enabled": True, "url": "https://api.themoviedb.org", "api_key": "k"})
+
+    class FakeTmdb:
+        def __init__(self, config):
+            pass
+
+        def best_trailer(self, title, year=None):
+            return {"key": "abc123", "name": "Drive Official Trailer"}
+
+    monkeypatch.setattr(tmdb_module, "TmdbClient", FakeTmdb)
+    r = client.get(reverse("vibes:rec_trailer", args=[rec.pk]))
+    assert b'src="https://www.youtube.com/embed/abc123"' in r.content
+    # Some studios disable embedding for their trailer uploads (YouTube "error 153") --
+    # a direct watch link must always be offered too, not just the iframe.
+    assert b'href="https://www.youtube.com/watch?v=abc123"' in r.content
+
+
 def test_settings_page_and_encrypted_save(client, db, settings):
     from integrations.models import ServiceConfig
 

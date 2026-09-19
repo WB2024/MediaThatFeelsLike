@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **TheMovieDB trailer embed**: a movie recommendation gets a "▶ watch trailer here"
+  toggle (lazy-loaded via htmx, once, on first expand) that embeds the official trailer
+  right on the page instead of only linking out. `TmdbClient.best_trailer()` searches
+  TMDB for the title, ranks that movie's listed videos (YouTube + official + Trailer >
+  Teaser > anything, by size), and the view degrades gracefully at every step -- TMDB
+  not configured, no match, no YouTube video listed -- to a plain "no trailer found"
+  message rather than an error, since the row's existing YouTube-search button is
+  already a working fallback. New `tmdb` service on the Settings page (`TMDB_API_KEY`
+  env var to seed it -- TMDB's v4 "API Read Access Token", sent as a Bearer header).
+  Discovered live: a real, fairly common fraction of official studio trailer uploads
+  have embedding disabled by the channel owner (YouTube's own "error 153", not
+  something this app can work around) -- so the embed is always paired with a direct
+  "open on YouTube" link to that exact video underneath, which works regardless.
 - **Radarr chip links to the movie**: the "radarr: added"/"radarr: exists" chip on a
   recommendation row is now a link straight to that film's own page in Radarr (new tab).
   `RadarrClient.push()` returns the movie's `titleSlug` alongside the existing

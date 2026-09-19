@@ -21,7 +21,11 @@ tick-boxes to curate the list, inline editing, and manual additions. Hover a rec
 for a one-click **▶ Trailer** (movies) or **▶ Play** (music) button that opens a YouTube
 search for it in a new tab — no setup, no API key, just a well-formed search query; YouTube's
 own ranking reliably puts the actual trailer or song first. Music recommendations also get
-a **Spotify** button alongside it, straight to a search on `open.spotify.com`.
+a **Spotify** button alongside it, straight to a search on `open.spotify.com`. A movie
+recommendation also gets a **▶ watch trailer here** toggle when TheMovieDB is configured
+on the Settings page: it expands inline to the official trailer, embedded right there on
+the page, with a direct "open on YouTube" link underneath for the trailers whose owner has
+disabled embedding (common for official studio uploads).
 
 From there:
 
@@ -110,8 +114,8 @@ Everything is in `.env` (see `.env.example` for every key):
   `REDDIT_FETCH_USER_AGENT`, optional `REDDIT_CLIENT_ID` / `SECRET`
 - `RADARR_URL` / `RADARR_API_KEY`, `LIDARR_URL` / `LIDARR_API_KEY`, `JELLYFIN_URL` /
   `JELLYFIN_API_KEY`, `NAVIDROME_URL` / `NAVIDROME_USERNAME` / `NAVIDROME_PASSWORD`,
-  `SLSKD_URL` / `SLSKD_API_KEY` — only used to seed the Settings page on first run; the
-  Settings page is the source of truth afterwards
+  `SLSKD_URL` / `SLSKD_API_KEY`, `TMDB_API_KEY` — only used to seed the Settings page on
+  first run; the Settings page is the source of truth afterwards
 - `MEDIA_DATA_DIR` — where cached post images live. Leave unset for a `media`
   subfolder next to the sqlite DB. Images are by far the largest and fastest-growing
   thing this app stores, so point this at different (e.g. larger, network-attached)

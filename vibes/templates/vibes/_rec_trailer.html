@@ -1,0 +1,8 @@
+{% if trailer %}
+<div class="trailer-embed">
+  <iframe src="https://www.youtube.com/embed/{{ trailer.key }}" title="{{ trailer.name }}" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+</div>
+<p class="trailer-note">{{ trailer.name }} · <a href="https://www.youtube.com/watch?v={{ trailer.key }}" target="_blank" rel="noopener">open on YouTube ↗</a> (some studios disable embedding here -- this always works)</p>
+{% else %}
+<p class="trailer-note">No trailer found on TheMovieDB for this title -- try the search link above.</p>
+{% endif %}

@@ -14,6 +14,7 @@ class ServiceConfig(models.Model):
         JELLYFIN = "jellyfin", "Jellyfin"
         NAVIDROME = "navidrome", "Navidrome"
         SLSKD = "slskd", "slskd"
+        TMDB = "tmdb", "TheMovieDB"
 
     service = models.CharField(max_length=20, choices=Service.choices, unique=True)
     enabled = models.BooleanField(default=True)
@@ -51,7 +52,7 @@ class ServiceConfig(models.Model):
     @property
     def kind(self):
         """Which section this service acts on."""
-        return "movies" if self.service in (self.Service.RADARR,) else (
+        return "movies" if self.service in (self.Service.RADARR, self.Service.TMDB) else (
             "music" if self.service in (self.Service.LIDARR, self.Service.NAVIDROME, self.Service.SLSKD) else "both"
         )
 
@@ -95,4 +96,5 @@ def service_flags(kind, services=None):
         "can_jellyfin": ServiceConfig.Service.JELLYFIN in services,
         "can_navidrome": kind == "music" and ServiceConfig.Service.NAVIDROME in services,
         "can_slskd": kind == "music" and ServiceConfig.Service.SLSKD in services,
+        "can_tmdb": kind == "movies" and ServiceConfig.Service.TMDB in services,
     }

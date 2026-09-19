@@ -10,6 +10,7 @@ from integrations.clients.lidarr import LidarrClient
 from integrations.clients.navidrome import NavidromeClient
 from integrations.clients.radarr import RadarrClient
 from integrations.clients.slskd import SlskdClient
+from integrations.clients.tmdb import TmdbClient
 from integrations.models import ServiceConfig
 
 
@@ -72,6 +73,36 @@ def test_radarr_requires_setup():
     stub(c, {("GET", "/api/v3/movie/lookup"): [{"title": "Drive", "year": 2011, "tmdbId": 1}], ("GET", "/api/v3/movie"): []})
     with pytest.raises(ServiceError):
         c.push(rec("Drive"))
+
+
+# -- TheMovieDB -----------------------------------------------------------------------
+
+
+def test_tmdb_best_trailer_prefers_official_trailer_over_teaser():
+    c = TmdbClient(cfg("tmdb"))
+    stub(c, {
+        ("GET", "/3/search/movie"): {"results": [{"id": 42, "title": "Drive"}]},
+        ("GET", "/3/movie/42/videos"): {"results": [
+            {"key": "teaser1", "site": "YouTube", "type": "Teaser", "official": True, "size": 1080},
+            {"key": "vimeo1", "site": "Vimeo", "type": "Trailer", "official": True, "size": 1080},
+            {"key": "trailer1", "site": "YouTube", "type": "Trailer", "official": True, "size": 1080, "name": "Official Trailer"},
+            {"key": "fan1", "site": "YouTube", "type": "Trailer", "official": False, "size": 1080},
+        ]},
+    })
+    trailer = c.best_trailer("Drive", 2011)
+    assert trailer == {"key": "trailer1", "name": "Official Trailer"}
+
+
+def test_tmdb_best_trailer_none_when_no_match_or_no_youtube_video():
+    c = TmdbClient(cfg("tmdb"))
+    stub(c, {("GET", "/3/search/movie"): {"results": []}})
+    assert c.best_trailer("Some Extremely Obscure Rarity") is None
+
+    stub(c, {
+        ("GET", "/3/search/movie"): {"results": [{"id": 7, "title": "Drive"}]},
+        ("GET", "/3/movie/7/videos"): {"results": [{"key": "x", "site": "Vimeo", "type": "Trailer"}]},
+    })
+    assert c.best_trailer("Drive") is None
 
 
 def test_lidarr_album_add_for_new_artist_then_remonitors(monkeypatch):

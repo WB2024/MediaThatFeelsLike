@@ -8,6 +8,7 @@ from .clients.lidarr import LidarrClient
 from .clients.navidrome import NavidromeClient
 from .clients.radarr import RadarrClient
 from .clients.slskd import SlskdClient
+from .clients.tmdb import TmdbClient
 from .models import ServiceConfig
 
 CLIENTS = {
@@ -16,6 +17,7 @@ CLIENTS = {
     ServiceConfig.Service.JELLYFIN: JellyfinClient,
     ServiceConfig.Service.NAVIDROME: NavidromeClient,
     ServiceConfig.Service.SLSKD: SlskdClient,
+    ServiceConfig.Service.TMDB: TmdbClient,
 }
 OK_STATUSES = {"added", "exists", "playlisted", "artist_only", "queued"}
 DEFAULT_PLAYLIST_NAME = "MediaThatFeelsLike Picks"

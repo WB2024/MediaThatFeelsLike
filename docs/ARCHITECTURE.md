@@ -276,6 +276,36 @@ computation the bulk buttons and every htmx rec-list partial share (added specif
 so the per-row dropdown keeps working after any toggle/edit/reparse/etc. swap, not just
 on the initial page load).
 
+### TheMovieDB: enrichment, not a push target
+
+`ServiceConfig.Service.TMDB` looks like the other five services (URL + API key on the
+Settings page, a `TmdbClient`, a "Test" button) but plays a different role: it's never a
+push destination (no `can_tmdb`-gated button in the "add just this one" dropdown, and
+`push.py`'s `client_for`/`push_one` never dispatch to it), just a read-only metadata
+lookup consumed by `vibes.views.rec_trailer`. `TmdbClient` authenticates with TMDB's v4
+"API Read Access Token" as a Bearer header (the modern replacement for the old v3
+`api_key` query-string param) and always points at the fixed `api.themoviedb.org` host,
+seeded as a literal in `SERVICE_ENV_DEFAULTS` rather than a `TMDB_URL` env var since
+there's nothing to actually configure there.
+
+`best_trailer(title, year)` searches `/search/movie`, then ranks that movie's
+`/movie/{id}/videos` results (YouTube + official + Trailer > Teaser > any, by size) and
+returns the winner, or `None` at any step -- no match, no videos, TMDB not configured --
+rather than raising, since the row's existing YouTube-search button is already a working
+fallback and a missing trailer shouldn't be treated as an error. The row's "▶ watch
+trailer here" `<details>` lazy-loads `GET /rec/<pk>/trailer/` via `hx-trigger="toggle
+once"` (fires on the native `toggle` event `<details>` elements already dispatch when
+opened; `once` stops it firing again on collapse) so the API call only happens if a user
+actually asks for it, and only the first time per page load.
+
+**Found live, not guessed**: a real, fairly common fraction of official studio trailer
+uploads have embedding disabled by the channel owner -- YouTube's iframe returns its own
+"error 153" rather than playing, and there's no way to detect this in advance without
+the full YouTube Data API (which embedding via TMDB was specifically chosen to avoid).
+`_rec_trailer.html` therefore always renders a direct `youtube.com/watch?v=` link to the
+exact resolved video underneath the iframe, labelled as the thing that "always works" --
+the embed is a bonus when the uploader allows it, not the only way to reach the video.
+
 ## Glance dashboard widget
 
 `vibes/api.py` is a small, deliberately unstable JSON API (no versioning, no auth beyond

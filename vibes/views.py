@@ -111,6 +111,27 @@ def _rec_list_response(request, post):
     return render(request, "vibes/_rec_list.html", {**_rec_context(post), "oob_count": True})
 
 
+def rec_trailer(request, pk):
+    """htmx: lazy-loaded the first time a movie recommendation's "watch trailer here"
+    is expanded. Looks the title up on TheMovieDB and embeds the best official trailer
+    it lists; renders a plain "not found" message rather than erroring when TMDB isn't
+    configured, has no match, or lists no YouTube video for it -- the row's own
+    YouTube-search link is right there as a fallback either way."""
+    from integrations.clients.base import ServiceError
+    from integrations.clients.tmdb import TmdbClient
+    from integrations.models import ServiceConfig
+
+    rec = get_object_or_404(Recommendation, pk=pk)
+    trailer = None
+    config = ServiceConfig.get(ServiceConfig.Service.TMDB)
+    if config.is_configured:
+        try:
+            trailer = TmdbClient(config).best_trailer(rec.parsed_title, rec.parsed_year)
+        except ServiceError:
+            trailer = None
+    return render(request, "vibes/_rec_trailer.html", {"trailer": trailer})
+
+
 # -- recommendation curation (all htmx) --------------------------------------------------
 
 
