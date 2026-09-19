@@ -9,6 +9,8 @@ MusicBrainz allows ~1 request/s per IP, shared with the web container, so this p
 itself at 2 s and a pass over N rows takes up to 4N seconds -- the default --limit keeps
 one pass well inside a sync interval."""
 
+import time
+
 from django.core.management.base import BaseCommand
 
 from integrations.clients.base import ServiceError
@@ -17,6 +19,9 @@ from integrations.clients.musicbrainz import MusicBrainzClient
 from integrations.enrich import resolve_recording
 from integrations.models import ServiceConfig
 from vibes.models import KnownArtist, Recommendation
+
+MAX_FAILURES = 3          # consecutive MusicBrainz errors before giving up this run
+PAUSE_AFTER_FAILURE = 15  # seconds
 
 
 class Command(BaseCommand):
@@ -44,15 +49,22 @@ class Command(BaseCommand):
             self.stdout.write("Nothing to verify.")
             return
         mb = MusicBrainzClient(min_interval=2.0)   # leave room for the web container's own lookups
-        found = swapped = missing = 0
+        found = swapped = missing = failures = 0
         for rec in rows:
             before = rec.display_label
             try:
                 recording, did_swap = resolve_recording(rec, mb)
             except ServiceError as exc:
-                # Network / rate-limit trouble: stop here, leave the rest unverified for next time.
-                self.stderr.write(f"MusicBrainz unavailable ({exc}); verified {found + missing} of {len(rows)} before stopping")
-                break
+                # Rate-limit collisions clear in seconds; a real outage doesn't. Give it
+                # a few goes, then leave the rest unverified for the next run.
+                failures += 1
+                if failures >= MAX_FAILURES:
+                    self.stderr.write(f"MusicBrainz unavailable ({exc}); verified {found + missing} of {len(rows)} before stopping")
+                    break
+                self.stderr.write(f"MusicBrainz hiccup ({exc}); pausing {PAUSE_AFTER_FAILURE}s")
+                time.sleep(PAUSE_AFTER_FAILURE)
+                continue
+            failures = 0
             if recording is None:
                 missing += 1
                 continue

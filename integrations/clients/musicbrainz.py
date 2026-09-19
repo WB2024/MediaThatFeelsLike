@@ -27,6 +27,7 @@ BASE = "https://musicbrainz.org/ws/2"
 COVER_ART = "https://coverartarchive.org"
 USER_AGENT = "MediaThatFeelsLike/0.1 (+https://github.com/WB2024/MediaThatFeelsLike)"
 MIN_INTERVAL = 1.05  # seconds between calls -- MusicBrainz's published limit is 1/s
+RETRY_BACKOFF = (2.0, 5.0, 10.0)  # sleeps between retries after a 503
 
 _lock = threading.Lock()
 _last_call = 0.0
@@ -62,10 +63,12 @@ class MusicBrainzClient:
     def get(self, path, **params):
         params["fmt"] = "json"
         resp = self._paced_get(path, params)
-        if resp.status_code == 503:
-            # The rate limit is per IP and shared with everything else on the LAN; one
-            # polite retry covers the usual collision.
-            time.sleep(max(2.0, self.min_interval))
+        for backoff in RETRY_BACKOFF:
+            if resp.status_code != 503:
+                break
+            # The rate limit is per IP and shared with everything else on the LAN (the
+            # web container, the sidecar's verifier); back off and try again.
+            time.sleep(max(backoff, self.min_interval))
             resp = self._paced_get(path, params)
         if resp.status_code == 503:
             raise ServiceError("MusicBrainz: rate limited (503) -- try again in a moment")

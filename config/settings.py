@@ -109,6 +109,14 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": env.db_url("DATABASE_URL", default=f"sqlite:///{DATA_DIR / 'db.sqlite3'}"),
 }
+if "sqlite" in DATABASES["default"]["ENGINE"]:
+    # Two containers write to this file (web + the sync sidecar, which now also runs the
+    # MusicBrainz verifier): WAL lets readers proceed during a write, and a long busy
+    # timeout replaces "database is locked" with a short wait. The default is 5 s.
+    DATABASES["default"].setdefault("OPTIONS", {}).update({
+        "timeout": 30,
+        "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+    })
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

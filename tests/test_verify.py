@@ -114,23 +114,33 @@ def test_command_seeds_from_lidarr_then_verifies_the_backlog(db, fake_mb, monkey
     assert ("Done", "Already") not in fake_mb
 
 
-def test_command_stops_at_the_first_musicbrainz_outage_and_leaves_the_rest_for_next_time(db, monkeypatch):
+def test_command_rides_out_a_rate_limit_hiccup_but_stops_on_a_real_outage(db, monkeypatch):
+    from reddit_sync.management.commands import verify_recommendations as cmd
+
     # the dev box's .env may seed a real Lidarr; keep the seeding step out of this one
     ServiceConfig.objects.update_or_create(service=ServiceConfig.Service.LIDARR, defaults={"enabled": False})
-    first = _rec(reddit_id="p1")
-    second = _rec(reddit_id="p2", parsed_artist="MIKA", parsed_title="Love Today")
-    seen = []
+    older = [_rec(reddit_id=f"p{i}", parsed_artist=f"Band {i}", parsed_title=f"Song {i}") for i in (1, 2, 3)]
+    fine = _rec(reddit_id="p4", parsed_artist="MIKA", parsed_title="Love Today")
+    newest = _rec(reddit_id="p5", parsed_artist="Sheryl Crow", parsed_title="All I Wanna Do")
+    naps, seen = [], []
+    monkeypatch.setattr(cmd.time, "sleep", naps.append)
 
     def flaky(self, artist, title):
         seen.append(artist)
-        if len(seen) == 1:
+        if len(seen) == 1:                      # newest post first: p5 gets one 503
+            raise ServiceError("rate limited (503)")
+        if artist == "MIKA":
             return MB[("mika", "love today")]
-        raise ServiceError("timed out")
+        raise ServiceError("timed out")         # then MusicBrainz goes away for good
 
     monkeypatch.setattr(MusicBrainzClient, "search_recording", flaky)
     out, err = StringIO(), StringIO()
     call_command("verify_recommendations", stdout=out, stderr=err)
-    assert "MusicBrainz unavailable (timed out); verified 1 of 2 before stopping" in err.getvalue()
-    second.refresh_from_db()
-    first.refresh_from_db()
-    assert second.verified_at is not None and first.verified_at is None
+    # p5 hiccup (pause), p4 ok (counter resets), p3 + p2 hiccups (pause), p1 = third in a row -> stop
+    assert err.getvalue().count("MusicBrainz hiccup") == 3 and naps == [cmd.PAUSE_AFTER_FAILURE] * 3
+    assert "MusicBrainz unavailable (timed out); verified 1 of 5 before stopping" in err.getvalue()
+    for r in older + [fine, newest]:
+        r.refresh_from_db()
+    assert fine.verified_at is not None
+    assert newest.verified_at is None           # a failed attempt is skipped, not marked; the next run picks it up
+    assert all(r.verified_at is None for r in older)

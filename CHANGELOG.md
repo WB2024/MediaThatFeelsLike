@@ -25,11 +25,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   artist. Runs on the detail page (with a note when it did) and in the new
   `verify_recommendations` command, which the sync sidecar runs after every sync
   (`SYNC_VERIFY_LIMIT`, default 100, paced at 2 s/request since MusicBrainz's 1 req/s
-  limit is per IP and shared with the web container; a 503 gets one polite retry).
-  Migration `vibes 0002`. 15 new tests.
+  limit is per IP and shared with the web container; a 503 is retried with 2/5/10 s
+  backoff, and the command rides out up to three consecutive failures before leaving
+  the rest for the next run). Migration `vibes 0002`. 16 new tests.
 
 ### Fixed
 
+- SQLite now runs in WAL mode with a 30 s busy timeout (was the 5 s default, rollback
+  journal). The web container and the sync sidecar both write to the same file and the
+  sidecar's new verifier pass made "database is locked" during a sync a real
+  possibility -- seen once during the v1.1.0 rollout.
 - Music detail page raised a template error when Last.fm was disabled and MusicBrainz
   returned no track length (failed lookup inside a `|default:` argument); the length is
   now resolved in Python like the other hints.

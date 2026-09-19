@@ -203,6 +203,43 @@ def test_musicbrainz_search_recording_returns_none_when_nothing_matches_both_hal
     assert c.search_recording("Linkin Park", "Easier to Run") is None
 
 
+def test_musicbrainz_get_backs_off_through_503s_then_gives_up(monkeypatch):
+    from integrations.clients import musicbrainz as mbmod
+
+    naps = []
+    monkeypatch.setattr(mbmod.time, "sleep", naps.append)
+    monkeypatch.setattr(mbmod, "_last_call", 0.0)
+
+    class Resp:
+        def __init__(self, code, body=None):
+            self.status_code, self._body = code, body
+
+        def json(self):
+            return self._body
+
+    class Session:
+        headers = {}
+
+        def __init__(self, codes):
+            self.codes, self.calls = list(codes), 0
+
+        def get(self, url, params=None, timeout=None):
+            self.calls += 1
+            code = self.codes.pop(0)
+            return Resp(code, {"ok": True} if code == 200 else None)
+
+    s = Session([503, 503, 200])
+    c = mbmod.MusicBrainzClient(session=s, min_interval=0)
+    assert c.get("/recording/", query="x") == {"ok": True} and s.calls == 3
+    assert [n for n in naps if n >= 2.0] == [2.0, 5.0]           # the backoff sleeps (pacing sleeps are ~0 here)
+
+    s = Session([503, 503, 503, 503, 503])
+    c = mbmod.MusicBrainzClient(session=s, min_interval=0)
+    with pytest.raises(ServiceError, match="rate limited"):
+        c.get("/recording/", query="x")
+    assert s.calls == 1 + len(mbmod.RETRY_BACKOFF)
+
+
 def test_musicbrainz_shape_artist_labels_links_and_years():
     from integrations.clients.musicbrainz import shape_artist
 
