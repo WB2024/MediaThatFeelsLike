@@ -63,6 +63,8 @@ credentials are encrypted at rest and never shown again.
 | Movies — mood-board tile grid | Music — same grid, music section |
 | ![Vibe detail page](docs/screenshots/post-detail.jpg) | ![Settings page](docs/screenshots/settings.jpg) |
 | Vibe page: parsed recommendations, curation, export, integration buttons | Settings: Radarr/Lidarr/Jellyfin/Navidrome, connection-tested |
+| ![Movie recommendation page](docs/screenshots/rec-movie.jpg) | ![Music recommendation page](docs/screenshots/rec-music.jpg) |
+| Movie rec page: TheMovieDB details/trailer, live Radarr + Jellyfin status | Music rec page: MusicBrainz + Last.fm — this comment had it backwards ("Blade Runner Blues - Vangelis"); MusicBrainz caught it and corrected the row in place |
 
 ## How it gets the data
 
