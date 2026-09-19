@@ -93,6 +93,27 @@ def test_resync_preserves_human_edits_and_replaces_the_rest(source):
     assert Recommendation.objects.filter(pk=manual.pk).exists()
 
 
+def test_reparse_adopts_the_orientation_once_the_artist_is_known(db):
+    from vibes.models import KnownArtist
+
+    music = Source.objects.create(subreddit="SongsThatFeelLikeThis", kind=Source.Kind.MUSIC)
+    client = FakeClient([gallery_post("m1", "t")], {"m1": [comment("c1", "All I wanna do - Sheryl crow\nBreathe - Michelle branch")]})
+    run_sync(music, client)
+    post = Post.objects.get(reddit_id="m1")
+    rec = post.recommendations.get(parsed_title="Sheryl crow")   # nothing to go on yet: stored as written
+    pushed = post.recommendations.get(parsed_title="Michelle branch")
+    pushed.integration_state = {"lidarr": {"status": "added"}}
+    pushed.save()
+
+    KnownArtist.learn(["Sheryl Crow"], KnownArtist.Source.LIDARR)
+    run_sync(music, client, refresh=True)
+    rec.refresh_from_db()
+    pushed.refresh_from_db()
+    assert (rec.parsed_artist, rec.parsed_title) == ("Sheryl crow", "All I wanna do")   # same row, corrected in place
+    assert post.recommendations.count() == 2                                              # not duplicated
+    assert (pushed.parsed_artist, pushed.parsed_title) == ("Breathe", "Michelle branch")  # already sent to a service: left alone
+
+
 def test_comment_cap_is_split_across_sources(db):
     a = Source.objects.create(subreddit="A", kind="movies")
     b = Source.objects.create(subreddit="B", kind="music")

@@ -50,23 +50,23 @@ def _phrase(text):
 
 
 class MusicBrainzClient:
-    def __init__(self, session=None):
+    """`min_interval` is the per-process pacing; the background verifier runs at half
+    speed so the web container's page loads (same public IP, same 1 req/s budget at
+    MusicBrainz's end) still get through."""
+
+    def __init__(self, session=None, min_interval=MIN_INTERVAL):
         self.session = session or requests.Session()
         self.session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
+        self.min_interval = min_interval
 
     def get(self, path, **params):
-        global _last_call
         params["fmt"] = "json"
-        with _lock:
-            wait = MIN_INTERVAL - (time.monotonic() - _last_call)
-            if wait > 0:
-                time.sleep(wait)
-            try:
-                resp = self.session.get(f"{BASE}{path}", params=params, timeout=15)
-            except requests.RequestException as exc:
-                raise ServiceError(f"MusicBrainz: {exc.__class__.__name__}: {exc}") from exc
-            finally:
-                _last_call = time.monotonic()
+        resp = self._paced_get(path, params)
+        if resp.status_code == 503:
+            # The rate limit is per IP and shared with everything else on the LAN; one
+            # polite retry covers the usual collision.
+            time.sleep(max(2.0, self.min_interval))
+            resp = self._paced_get(path, params)
         if resp.status_code == 503:
             raise ServiceError("MusicBrainz: rate limited (503) -- try again in a moment")
         if resp.status_code >= 400:
@@ -75,6 +75,19 @@ class MusicBrainzClient:
             return resp.json()
         except ValueError as exc:
             raise ServiceError("MusicBrainz: non-JSON response") from exc
+
+    def _paced_get(self, path, params):
+        global _last_call
+        with _lock:
+            wait = self.min_interval - (time.monotonic() - _last_call)
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                return self.session.get(f"{BASE}{path}", params=params, timeout=15)
+            except requests.RequestException as exc:
+                raise ServiceError(f"MusicBrainz: {exc.__class__.__name__}: {exc}") from exc
+            finally:
+                _last_call = time.monotonic()
 
     # -- lookups --------------------------------------------------------------------------
 

@@ -147,6 +147,8 @@ class Candidate:
     # filled in by the caller / dedupe
     comment: dict = field(default_factory=dict)
     mention_count: int = 1
+    # for "X - Y" splits only: see orient(); used for the per-comment consistency vote
+    orientation: int = 0
 
     @property
     def key(self):
@@ -162,13 +164,35 @@ class Candidate:
 # ---------------------------------------------------------------------------------------
 
 
-def normalise_key(artist, title):
-    text = f"{artist} {title}".lower()
+def _norm_part(text):
+    text = (text or "").lower()
     text = re.sub(r"\(.*?\)|\[.*?\]", " ", text)
     text = re.sub(r"\b(feat\.?|ft\.?|featuring)\b.*$", " ", text)
     text = re.sub(r"[^a-z0-9]+", " ", text).strip()
-    text = re.sub(r"^(the|a|an) ", "", text)
-    return text
+    return re.sub(r"^(the|a|an) ", "", text)
+
+
+def normalise_key(artist, title):
+    """Orientation-insensitive: "Sheryl Crow - All I Wanna Do" and "All I Wanna Do -
+    Sheryl Crow" are the same recommendation whichever way round a commenter wrote it,
+    so they must merge (and a stored swap must survive a re-parse)."""
+    return " ".join(sorted(p for p in (_norm_part(artist), _norm_part(title)) if p))
+
+
+def orient(first, second, known_artists):
+    """Decide which half of an "X - Y" is the artist -- this sub's commenters write
+    "Title - Artist" about as often as the reverse. Returns (artist, title, evidence):
+    +1 the first half is a known artist (kept as written), -1 the second half is
+    (swapped), 0 no idea (kept as written; a same-comment vote may flip it later)."""
+    if not known_artists:
+        return first, second, 0
+    a = _norm_part(first) in known_artists
+    b = _norm_part(second) in known_artists
+    if a and not b:
+        return first, second, 1
+    if b and not a:
+        return second, first, -1
+    return first, second, 0
 
 
 def _strip_wrappers(text):
@@ -249,19 +273,24 @@ def is_junk(title, method):
     return False
 
 
-def split_artist_title(text):
-    """'Artist - Title' → (artist, title) when it looks like exactly that."""
+def split_artist_title(text, known_artists=frozenset(), lenient=False):
+    """'X - Y' → (X, Y) when it looks like a song line at all; orient() decides which
+    half is the artist. A first half that starts like a sentence ("I think - ...") is
+    rejected unless the second half is a known artist -- then it's a title that just
+    happens to start that way ("This Kiss - Faith Hill"). `lenient` skips that guard;
+    parse_comment uses it to hold such lines back until the rest of the comment has
+    shown it's written "Title - Artist"."""
     parts = DASH.split(text, maxsplit=1)
     if len(parts) != 2:
         return None
-    artist, title = parts[0].strip(), parts[1].strip()
-    if not artist or not title:
+    first, second = parts[0].strip(), parts[1].strip()
+    if not first or not second:
         return None
-    if _word_count(artist) > 7 or _word_count(title) > 10:
+    if _word_count(first) > 7 or _word_count(second) > 10:
         return None
-    if artist.lower().startswith(("i ", "it ", "this ", "that ")):
+    if not lenient and first.lower().startswith(("i ", "it ", "this ", "that ")) and _norm_part(second) not in known_artists:
         return None
-    return artist, title
+    return first, second
 
 
 def split_title_by_artist(text):
@@ -326,28 +355,32 @@ def _host_signal(url, kind):
 # ---------------------------------------------------------------------------------------
 
 
-def parse_comment(body, kind, comment_score=0, depth=0):
-    """Extract candidates from one comment body. `kind` is 'movies' or 'music'."""
+def parse_comment(body, kind, comment_score=0, depth=0, known_artists=None):
+    """Extract candidates from one comment body. `kind` is 'movies' or 'music'.
+    `known_artists`: a set of normalised artist names (see vibes.models.KnownArtist) that
+    lets "X - Y" be oriented; without it the written order is kept."""
     if not body or body.strip() in ("[deleted]", "[removed]"):
         return []
     text = html.unescape(body)
     text = BLOCKQUOTE.sub("", text)
     text = CODE_SPAN.sub(" ", text)
+    known = known_artists or frozenset()
 
     candidates = []
     seen_spans = []
+    deferred = []   # "X - Y" lines split_artist_title's sentence guard rejected; see below
     score_bonus = 0.1 if comment_score >= 10 else 0.05 if comment_score >= 3 else 0.0
     depth_bonus = 0.03 if depth == 0 else 0.0
 
-    def add(title, artist="", year=None, url="", method="short_comment", confidence=0.5, snippet=""):
+    def add(title, artist="", year=None, url="", method="short_comment", confidence=0.5, snippet="", orientation=0):
         title, found_year = clean_title(title, kind)
         artist = _strip_wrappers(clean_title(artist, kind)[0]) if artist else ""
         year = year or found_year
         if kind == "music" and not artist and title:
             # A stray "Artist - Title" can hide inside any fragment.
-            split = split_artist_title(title)
+            split = split_artist_title(title, known)
             if split:
-                artist, title = split
+                artist, title, orientation = orient(split[0], split[1], known)
                 method = "artist_title" if method in ("short_comment", "list_item", "quoted", "titlecase") else method
                 confidence = max(confidence, 0.85)
         if not title and not artist:
@@ -358,7 +391,7 @@ def parse_comment(body, kind, comment_score=0, depth=0):
             return
         conf = min(0.99, confidence + score_bonus + depth_bonus)
         candidates.append(
-            Candidate(title=title, artist=artist, year=year, url=url, method=method, confidence=round(conf, 2), snippet=snippet[:300])
+            Candidate(title=title, artist=artist, year=year, url=url, method=method, confidence=round(conf, 2), snippet=snippet[:300], orientation=orientation)
         )
 
     # 1) Markdown links: the link text is usually the title.
@@ -421,7 +454,23 @@ def parse_comment(body, kind, comment_score=0, depth=0):
             seg = seg.strip()
             if not seg or seg in seen_spans:
                 continue
-            _parse_segment(seg, kind, is_item, whole_short, inherited_url, add, seen_spans)
+            _parse_segment(seg, kind, is_item, whole_short, inherited_url, add, seen_spans, known, deferred.append)
+
+    # A commenter writes every "X - Y" line the same way round. If any line in this
+    # comment could be oriented from a known artist, apply that to the lines that
+    # couldn't -- "All I wanna do - Sheryl crow / This kiss - Faith Hill" flips as one.
+    vote = sum(c.orientation for c in candidates if c.method == "artist_title")
+    if vote:
+        for c in candidates:
+            if c.method == "artist_title" and c.orientation == 0 and c.artist and c.title:
+                if vote < 0:
+                    c.artist, c.title = c.title, c.artist
+                c.orientation = 1 if vote > 0 else -1   # now oriented, just second-hand
+    if vote < 0:
+        # ...and lines whose first half read like a sentence ("This kiss - Faith Hill")
+        # were held back; in a Title - Artist comment they're titles after all.
+        for piece, (first, second), year, url in deferred:
+            add(first, artist=second, year=year, url=url, method="artist_title", confidence=0.8, snippet=piece, orientation=-1)
 
     return _dedupe_within_comment([c for c in candidates if c.is_valid])
 
@@ -443,7 +492,13 @@ def _dedupe_within_comment(candidates):
     out = list(by_key.values())
     # "[Space Song](spotify) by Beach House" yields both a bare "Space Song" (link) and
     # "Beach House - Space Song"; fold the bare one into the richer one.
-    with_artist = {normalise_key("", c.title): c for c in out if c.artist and c.title}
+    with_artist = {}
+    for c in out:
+        if c.artist and c.title:
+            # keyed by both halves: whichever way round the pair came out, a bare
+            # mention of either half in the same comment is the same recommendation
+            with_artist.setdefault(normalise_key("", c.title), c)
+            with_artist.setdefault(normalise_key("", c.artist), c)
     folded = []
     for cand in out:
         target = with_artist.get(normalise_key("", cand.title)) if not cand.artist else None
@@ -456,7 +511,7 @@ def _dedupe_within_comment(candidates):
     return folded
 
 
-def _parse_segment(seg, kind, is_item, whole_short, inherited_url, add, seen_spans):
+def _parse_segment(seg, kind, is_item, whole_short, inherited_url, add, seen_spans, known=frozenset(), defer=None):
     body, seg_year = clean_title(seg, kind)
     if not body:
         return
@@ -484,11 +539,16 @@ def _parse_segment(seg, kind, is_item, whole_short, inherited_url, add, seen_spa
         pieces = split_list(body, kind) if ("-" in body or "–" in body) else [body]
         matched = False
         for piece in pieces:
-            split = split_artist_title(piece)
+            split = split_artist_title(piece, known)
             if split:
-                add(split[1], artist=split[0], year=seg_year, url=inherited_url, method="artist_title", confidence=0.85, snippet=piece)
+                artist, title, evidence = orient(split[0], split[1], known)
+                add(title, artist=artist, year=seg_year, url=inherited_url, method="artist_title", confidence=0.85, snippet=piece, orientation=evidence)
                 matched = True
                 continue
+            if defer is not None:
+                held = split_artist_title(piece, known, lenient=True)
+                if held:
+                    defer((piece, held, seg_year, inherited_url))
             by = split_title_by_artist(piece)
             if by:
                 add(by[1], artist=by[0], year=seg_year, url=inherited_url, method="title_by_artist", confidence=0.85, snippet=piece)
@@ -546,8 +606,11 @@ def dedupe(candidates):
         if not same_comment:
             existing.mention_count += 1
         # Prefer the instance with richer metadata / higher confidence.
-        richer = (bool(cand.artist), bool(cand.year), bool(cand.url), cand.confidence) > (
-            bool(existing.artist), bool(existing.year), bool(existing.url), existing.confidence
+        # An oriented "X - Y" beats a guessed one: the key is orientation-insensitive, so
+        # "All I Wanna Do - Sheryl Crow" and "Sheryl Crow - All I Wanna Do" land here
+        # together and the version somebody could vouch for should win.
+        richer = (bool(cand.artist), abs(cand.orientation), bool(cand.year), bool(cand.url), cand.confidence) > (
+            bool(existing.artist), abs(existing.orientation), bool(existing.year), bool(existing.url), existing.confidence
         )
         winner, loser = (cand, existing) if richer else (existing, cand)
         winner.mention_count = existing.mention_count

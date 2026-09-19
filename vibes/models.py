@@ -212,6 +212,9 @@ class Recommendation(models.Model):
     )
     # Per-service outcome of the last push, e.g. {"radarr": {"status": "added", "at": "...", "detail": "..."}}
     integration_state = models.JSONField(default=dict, blank=True)
+    # When MusicBrainz last confirmed (or failed to find) this recording -- and, if the
+    # comment had "Title - Artist" the wrong way round, when the two fields were swapped.
+    verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -246,3 +249,52 @@ class Recommendation(models.Model):
     @property
     def comment_url(self):
         return f"https://www.reddit.com{self.comment_permalink}" if self.comment_permalink else ""
+
+
+class KnownArtist(models.Model):
+    """Artist names we're sure about, so the parser can tell which side of "X - Y" is
+    the artist. Seeded from Lidarr's library, then grown by every recording MusicBrainz
+    confirms (detail page or the background verifier). Matched on `norm`, which is the
+    same normalisation the parser's dedupe key uses."""
+
+    class Source(models.TextChoices):
+        LIDARR = "lidarr", "Lidarr library"
+        MUSICBRAINZ = "musicbrainz", "MusicBrainz"
+        MANUAL = "manual", "Manual"
+
+    name = models.CharField(max_length=200)
+    norm = models.CharField(max_length=200, unique=True)
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.MUSICBRAINZ)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["norm"]
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def normalise(name):
+        from reddit_sync.parser import normalise_key  # local import: parser has no model deps
+
+        return normalise_key("", name)
+
+    @classmethod
+    def learn(cls, names, source):
+        """Insert the names we don't already have; returns how many were new."""
+        wanted = {}
+        for name in names:
+            name = (name or "").strip()
+            norm = cls.normalise(name) if name else ""
+            if norm and norm not in wanted:
+                wanted[norm] = name[:200]
+        if not wanted:
+            return 0
+        have = set(cls.objects.filter(norm__in=list(wanted)).values_list("norm", flat=True))
+        rows = [cls(name=n, norm=k, source=source) for k, n in wanted.items() if k not in have]
+        cls.objects.bulk_create(rows, ignore_conflicts=True)
+        return len(rows)
+
+    @classmethod
+    def norms(cls):
+        return set(cls.objects.values_list("norm", flat=True))

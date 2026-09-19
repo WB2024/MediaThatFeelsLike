@@ -16,7 +16,7 @@ from django import db
 from django.conf import settings
 from django.utils import timezone
 
-from vibes.models import Post, PostImage, Recommendation, Source
+from vibes.models import KnownArtist, Post, PostImage, Recommendation, Source
 
 from . import parser
 from .client import RedditBlocked, RedditError, RedditNotFound, get_client, utc_datetime
@@ -263,11 +263,12 @@ class Syncer:
         """Run the parser over post.comments and reconcile with existing rows: rows a
         human has edited or pushed to a service are preserved; the rest are replaced."""
         kind = post.source.kind
+        known = KnownArtist.norms() if kind == "music" else frozenset()
         candidates = []
         for comment in post.comments:
             if comment.get("author") == "AutoModerator" or comment.get("distinguished") or comment.get("stickied"):
                 continue
-            for cand in parser.parse_comment(comment.get("body", ""), kind, comment.get("score", 0), comment.get("depth", 0)):
+            for cand in parser.parse_comment(comment.get("body", ""), kind, comment.get("score", 0), comment.get("depth", 0), known_artists=known):
                 cand.comment = comment
                 candidates.append(cand)
         candidates = parser.dedupe(candidates)
@@ -303,6 +304,15 @@ class Syncer:
                     row.parsed_year = row.parsed_year or cand.year
                     row.parsed_url = row.parsed_url or cand.url[:1000]
                     row.included = cand.confidence >= parser.INCLUDE_THRESHOLD
+                    # The key is orientation-insensitive, so a row stored "Title - Artist"
+                    # matches a candidate the parser can now orient (a KnownArtist has
+                    # appeared since). Adopt it -- unless MusicBrainz or a human already
+                    # settled the question, or a service was pushed with the old fields.
+                    if (
+                        cand.orientation and row.verified_at is None and not row.integration_state
+                        and parser.normalise_key("", row.parsed_artist) == parser.normalise_key("", cand.title)
+                    ):
+                        row.parsed_artist, row.parsed_title = cand.artist[:200], cand.title[:300]
                 for k, v in fields.items():
                     setattr(row, k, v)
                 row.save()

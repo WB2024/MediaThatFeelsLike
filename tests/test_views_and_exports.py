@@ -429,6 +429,41 @@ def test_rec_detail_music_page_is_built_from_musicbrainz_and_lastfm(client, post
     assert "open.spotify.com/search/" in html and "youtube.com/results" in html
 
 
+def test_rec_detail_music_page_corrects_a_reversed_rec_and_says_so(client, post, monkeypatch):
+    from integrations import enrich
+    from vibes.models import KnownArtist
+
+    rec = post.recommendations.get(parsed_title="Fade Into You")
+    rec.parsed_artist, rec.parsed_title = "Fade Into You", "Mazzy Star"     # the comment said "Fade Into You - Mazzy Star"
+    rec.save()
+    _configure("lastfm", enabled=False)
+    _configure("lidarr", enabled=False)
+    asked = []
+
+    class FakeMB:
+        def search_recording(self, artist, title):
+            asked.append((artist, title))
+            if artist == "Mazzy Star":
+                return {"mbid": "rec-1", "title": "Fade Into You", "artist": "Mazzy Star", "artist_mbid": "art-1", "length": "4:55", "album": "",
+                        "album_year": "", "album_type": "", "release_group_mbid": "", "release_mbid": "", "releases": [], "release_count": 0,
+                        "isrcs": [], "url": "https://musicbrainz.org/recording/rec-1"}
+            return None
+
+    monkeypatch.setattr(enrich, "MusicBrainzClient", FakeMB)
+    r = client.get(reverse("vibes:rec_detail", args=[rec.pk]))
+    html = r.content.decode()
+    assert r.status_code == 200 and asked == [("Fade Into You", "Mazzy Star"), ("Mazzy Star", "Fade Into You")]
+    assert "<h1>Fade Into You <small>by Mazzy Star</small></h1>" in html
+    assert "The comment had this the other way round" in html
+    rec.refresh_from_db()
+    assert (rec.parsed_artist, rec.parsed_title) == ("Mazzy Star", "Fade Into You") and rec.verified_at is not None
+    assert "mazzy star" in KnownArtist.norms()
+    # Second visit: already verified, MusicBrainz is asked once and nothing is rewritten.
+    asked.clear()
+    r = client.get(reverse("vibes:rec_detail", args=[rec.pk]))
+    assert asked == [("Mazzy Star", "Fade Into You")] and "other way round" not in r.content.decode()
+
+
 def test_rec_detail_music_page_survives_musicbrainz_being_down(client, post, monkeypatch):
     from integrations import enrich
     from integrations.clients.base import ServiceError

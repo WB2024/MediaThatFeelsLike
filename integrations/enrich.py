@@ -10,6 +10,8 @@ an error. Errors are returned as strings for the template to show inline.
 
 from django.utils import timezone
 
+from vibes.models import KnownArtist
+
 from .clients.base import ServiceError, similarity
 from .clients.jellyfin import JellyfinClient
 from .clients.lastfm import LastfmClient
@@ -51,15 +53,42 @@ def movie_page(rec):
     return out
 
 
+def resolve_recording(rec, mb=None, save=True):
+    """Pin `rec` to a MusicBrainz recording, trying the fields as stored and then the
+    other way round -- this sub writes "Title - Artist" about as often as "Artist -
+    Title" and the parser can only guess. A match on the swapped pair is authoritative:
+    the row is corrected in place (unless a human edited it) and the artist joins
+    KnownArtist so the parser gets the next comment right first time. Returns
+    (recording_or_None, swapped). Raises ServiceError when MusicBrainz didn't answer, so
+    callers never mark a row verified on a network failure."""
+    mb = mb or MusicBrainzClient()
+    artist, title = rec.parsed_artist, rec.parsed_title
+    if not title:
+        return None, False
+    found = mb.search_recording(artist, title)
+    swapped = False
+    if found is None and artist:
+        found = mb.search_recording(title, artist)
+        swapped = found is not None
+    if swapped and not rec.edited:
+        rec.parsed_artist, rec.parsed_title = title[:200], artist[:300]
+    if save and (swapped or rec.verified_at is None):
+        rec.verified_at = timezone.now()
+        rec.save(update_fields=["parsed_artist", "parsed_title", "verified_at", "updated_at"])
+    if found and found.get("artist"):
+        KnownArtist.learn([found["artist"]], KnownArtist.Source.MUSICBRAINZ)
+    return found, swapped
+
+
 def music_page(rec):
     """MusicBrainz pins the recording (and gives us the artist MBID + cover art keys);
     Last.fm adds the social layer for the track. The artist section is loaded separately
     (`artist_panel`) so MusicBrainz's 1 req/s limit isn't hit twice in one request."""
-    out = {"mb": None, "mb_artist": None, "track": None, "lastfm_configured": False, "cover_urls": [], "errors": []}
+    out = {"mb": None, "mb_artist": None, "track": None, "lastfm_configured": False, "cover_urls": [], "errors": [], "swapped": False}
     mb = MusicBrainzClient()
     try:
         if rec.parsed_title:
-            out["mb"] = mb.search_recording(rec.parsed_artist, rec.parsed_title)
+            out["mb"], out["swapped"] = resolve_recording(rec, mb)
         elif rec.parsed_artist:
             out["mb_artist"] = mb.search_artist(rec.parsed_artist)
     except ServiceError as exc:
@@ -84,6 +113,7 @@ def music_page(rec):
     # raises instead of falling back like a bare variable would.
     out["artist_mbid"] = mbd.get("artist_mbid") or (out["mb_artist"] or {}).get("mbid") or ""
     out["album_hint"] = mbd.get("album") or (out["track"] or {}).get("album") or ""
+    out["length"] = mbd.get("length") or (out["track"] or {}).get("length") or ""
     return out
 
 

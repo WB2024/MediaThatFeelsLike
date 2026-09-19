@@ -86,3 +86,46 @@ def test_score_and_depth_bonus():
     low = parser.parse_comment("Nightcrawler", "movies", comment_score=0, depth=2)[0]
     high = parser.parse_comment("Nightcrawler", "movies", comment_score=25, depth=0)[0]
     assert high.confidence > low.confidence
+
+
+# -- artist/title orientation -----------------------------------------------------------
+
+REVERSED = "All I wanna do - Sheryl crow\nThis kiss - faith hill\nBreathe - Michelle branch"
+
+
+def test_without_known_artists_the_written_order_is_kept():
+    # ...and the sentence-looking "This kiss - ..." line is dropped rather than guessed.
+    assert titles(parser.parse_comment(REVERSED, "music")) == [("All I wanna do", "Sheryl crow", None), ("Breathe", "Michelle branch", None)]
+
+
+def test_one_known_artist_orients_the_whole_comment_and_rescues_the_held_back_line():
+    cands = parser.parse_comment(REVERSED, "music", known_artists={"sheryl crow"})
+    assert sorted(titles(cands)) == [("Michelle branch", "Breathe", None), ("Sheryl crow", "All I wanna do", None), ("faith hill", "This kiss", None)]
+    assert all(c.method == "artist_title" and c.orientation == -1 for c in cands)
+
+
+def test_known_artist_on_the_left_confirms_the_written_order():
+    cands = parser.parse_comment("Sheryl Crow - All I Wanna Do, Faith Hill - This Kiss", "music", known_artists={"sheryl crow"})
+    assert titles(cands) == [("Sheryl Crow", "All I Wanna Do", None), ("Faith Hill", "This Kiss", None)]
+    assert [c.orientation for c in cands] == [1, 1]
+
+
+def test_both_halves_known_means_no_evidence():
+    assert parser.orient("Heart", "Genesis", {"heart", "genesis"}) == ("Heart", "Genesis", 0)
+    assert parser.orient("Genesis", "Grimes", {"genesis"}) == ("Genesis", "Grimes", 1)
+
+
+def test_normalise_key_ignores_orientation_articles_and_features():
+    assert parser.normalise_key("Sheryl Crow", "All I Wanna Do") == parser.normalise_key("All I Wanna Do", "Sheryl Crow")
+    assert parser.normalise_key("The Cure", "Pictures of You") == parser.normalise_key("Cure", "Pictures Of You (Remastered)")
+    assert parser.normalise_key("Beach House", "Space Song") == parser.normalise_key("Space Song feat. Nobody", "Beach House")
+
+
+def test_dedupe_merges_both_spellings_and_keeps_the_oriented_one():
+    reversed_ = parser.parse_comment("All I wanna do - Sheryl crow", "music")[0]
+    reversed_.comment = {"id": "c1"}
+    oriented = parser.parse_comment("Sheryl Crow - All I Wanna Do", "music", known_artists={"sheryl crow"})[0]
+    oriented.comment = {"id": "c2"}
+    merged = parser.dedupe([reversed_, oriented])
+    assert len(merged) == 1
+    assert (merged[0].artist, merged[0].title, merged[0].mention_count) == ("Sheryl Crow", "All I Wanna Do", 2)

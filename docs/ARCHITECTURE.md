@@ -148,8 +148,11 @@ every container start.
 - **`Recommendation`** — post FK, raw comment text, comment score, comment permalink,
   **parsed_title** (best-guess extracted title), **parsed_year** (movies) /
   **parsed_artist** (music), a confidence/method field (which heuristic produced it, for
-  debugging), and a user-facing `included` boolean (ticked/unticked in the curation UI —
-  see below) that export/integration actions respect.
+  debugging), a user-facing `included` boolean (ticked/unticked in the curation UI —
+  see below) that export/integration actions respect, and `verified_at` (when
+  MusicBrainz last confirmed the artist/title pair -- see "Which half is the artist?").
+- **`KnownArtist`** — normalised artist names the parser can trust (from Lidarr,
+  MusicBrainz confirmations, or by hand) so it knows which side of "X - Y" is the artist.
 - **`ServiceConfig`** — one row per integration (Radarr/Lidarr/Jellyfin/Navidrome): base
   URL + credential fields. Credential fields are **encrypted at rest** with a Fernet key
   from `CREDENTIAL_ENCRYPTION_KEY` (see `.env.example`) via a custom encrypted model
@@ -182,6 +185,37 @@ Heuristics, roughly in order of confidence:
 
 Every extracted candidate keeps a link back to the source comment (text + permalink +
 score) so a human can sanity-check it in one click without leaving the page.
+
+### Which half is the artist?
+
+"X - Y" is the commonest way a track is written in these subs, and the commenters split
+about evenly between "Artist - Title" and "Title - Artist" -- a regex can't tell "All I
+wanna do - Sheryl crow" from "Sheryl Crow - All I Wanna Do". Three layers settle it:
+
+1. **The parser learns artists.** `KnownArtist` (vibes) is a table of normalised artist
+   names: seeded from Lidarr's library (every artist you already have), grown by every
+   recording MusicBrainz confirms, and editable in `/admin/` for the stubborn ones.
+   `parser.orient()` puts the known half on the artist side; when neither or both halves
+   are known it keeps the written order but remembers it was a guess (`orientation == 0`).
+   Then a **per-comment vote**: a commenter writes every line the same way round, so one
+   line that could be oriented ("Sheryl crow" is in Lidarr) flips its siblings ("Breathe -
+   Michelle branch") too, and rescues lines whose first half read like a sentence ("This
+   kiss - faith hill") that the split guard had held back.
+2. **The dedupe key ignores orientation.** `normalise_key(artist, title)` sorts the two
+   normalised halves, so both spellings of a track merge into one recommendation (the
+   oriented one wins), and a row that was later corrected still matches its candidate on
+   the next re-parse instead of being duplicated. On re-parse an un-verified, un-pushed,
+   un-edited row adopts the parser's orientation once a KnownArtist makes it confident --
+   so simply seeding the table and running `reparse_recommendations` fixes much of the
+   backlog offline.
+3. **MusicBrainz is the referee.** `enrich.resolve_recording()` looks the pair up as
+   stored and, failing that, the other way round; a match on the swapped pair corrects
+   the row in place (never a human-edited one), stamps `Recommendation.verified_at`, and
+   teaches the artist to `KnownArtist`. It runs on the detail page (so opening a wrong rec
+   fixes it, with a note saying so) and in `manage.py verify_recommendations`, which the
+   sync sidecar runs after every sync over the unverified backlog, newest posts first,
+   paced at 2 s/request because MusicBrainz's 1 req/s limit is per IP and shared with the
+   web container. A MusicBrainz outage stops the pass without marking anything verified.
 
 ## Export formats
 

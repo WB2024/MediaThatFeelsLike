@@ -19,7 +19,7 @@
         {% if mb_artist.disambiguation %}<p class="tagline">{{ mb_artist.disambiguation }}</p>{% endif %}
       {% endif %}
       <div class="meta">
-        {% if mb.length or track.length %}<span>{{ mb.length|default:track.length }}</span>{% endif %}
+        {% if length %}<span>{{ length }}</span>{% endif %}
         {% if track %}<span class="rating">{{ track.listeners|intcomma }} listeners</span><span>{{ track.playcount|intcomma }} plays</span>{% endif %}
         {% for t in track.tags|slice:":6" %}<span class="genre">{{ t }}</span>{% endfor %}
       </div>
@@ -32,6 +32,10 @@
     </div>
   </div>
 </div>
+
+{% if swapped %}
+<p class="trailer-note">The comment had this the other way round (“{{ rec.parsed_title }}” as the artist); MusicBrainz confirmed the correction and it's been saved.</p>
+{% endif %}
 
 {% if track.wiki %}
 <div class="rec-section"><h2>About the track</h2><p>{{ track.wiki }}</p><p class="trailer-note"><a href="{{ track.url }}" target="_blank" rel="noopener">Read more on Last.fm ↗</a></p></div>

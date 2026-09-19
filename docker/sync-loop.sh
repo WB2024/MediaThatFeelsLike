@@ -4,12 +4,15 @@
 set -u
 INTERVAL="${SYNC_INTERVAL:-1800}"
 MAX_COMMENTS="${SYNC_MAX_COMMENTS:-40}"
+VERIFY_LIMIT="${SYNC_VERIFY_LIMIT:-100}"
 cd /app
 # Give the app container a moment to run migrations on a fresh deploy.
 sleep 20
 while true; do
   echo "[sync-loop] $(date -u +%FT%TZ) starting sync (max ${MAX_COMMENTS} comment threads)"
   python manage.py sync_reddit --max-comments "${MAX_COMMENTS}" || echo "[sync-loop] sync exited with status $?"
+  # Then settle artist/title orientation for new music recs against MusicBrainz (~1 req/s).
+  python manage.py verify_recommendations --limit "${VERIFY_LIMIT}" || echo "[sync-loop] verify exited with status $?"
   echo "[sync-loop] sleeping ${INTERVAL}s"
   sleep "${INTERVAL}"
 done

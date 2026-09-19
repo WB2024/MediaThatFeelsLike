@@ -80,6 +80,15 @@ candidate carrying a confidence score. Anything at 0.6+ is included by default; 
 sits in a collapsed "low confidence" section to promote by hand. Curation is the point,
 not an afterthought — the parser is a candidate generator.
 
+Music has one extra wrinkle: commenters write "Title - Artist" about as often as
+"Artist - Title". The parser keeps a table of artists it can trust (`KnownArtist`, seeded
+from your Lidarr library and grown by every MusicBrainz confirmation, editable in the
+admin) to orient each line, applies one orientation per comment, and MusicBrainz gets the
+final say — opening a recommendation's page, or the sync sidecar's background pass,
+looks the pair up both ways and quietly swaps a reversed one (the dedupe key ignores
+orientation, so nothing is duplicated). `docs/ARCHITECTURE.md` → "Which half is the
+artist?".
+
 ## Running it
 
 ### Docker (the services LXC)
@@ -91,7 +100,7 @@ docker compose up -d --build
 ```
 
 The app is on port **8095**; the `sync` sidecar runs a sync every 30 minutes
-(`SYNC_INTERVAL`, `SYNC_MAX_COMMENTS` in `compose.yaml`). Data (sqlite + cached images)
+(`SYNC_INTERVAL`, `SYNC_MAX_COMMENTS`, `SYNC_VERIFY_LIMIT` in `compose.yaml`). Data (sqlite + cached images)
 lives in `./data`. Press **Sync now** on the Settings page for the first fill, then let
 the sidecar catch up over a few runs — comment threads are capped per run on purpose.
 
@@ -115,6 +124,7 @@ log uses arrows. `pytest -q` runs the tests; `ruff check .` lints.
 | --- | --- |
 | `sync_reddit [--source SUB] [--kind movies\|music] [--limit N] [--max-comments N] [--refresh] [--no-images] [--force]` | fetch listings, comment threads, images; parse recommendations |
 | `reparse_recommendations [--post ID] [--kind ...]` | re-run the parser over stored comments (no network) |
+| `verify_recommendations [--limit N] [--recheck] [--seed-only]` | refresh `KnownArtist` from Lidarr, then confirm unverified music recs against MusicBrainz, swapping artist/title where the comment had them reversed (the sync sidecar runs this after every sync; `SYNC_VERIFY_LIMIT`, default 100) |
 | `bootstrap` | create the two default sources, seed service settings from `.env` (idempotent) |
 
 ## Configuration

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Post, PostImage, Recommendation, Source
+from .models import KnownArtist, Post, PostImage, Recommendation, Source
 
 
 @admin.register(Source)
@@ -43,7 +43,22 @@ class PostAdmin(admin.ModelAdmin):
 
 @admin.register(Recommendation)
 class RecommendationAdmin(admin.ModelAdmin):
-    list_display = ("display_label", "post", "method", "confidence", "mention_count", "comment_score", "included", "edited")
+    list_display = ("display_label", "post", "method", "confidence", "mention_count", "comment_score", "included", "edited", "verified_at")
     list_filter = ("method", "included", "edited", "post__source")
     search_fields = ("parsed_title", "parsed_artist", "raw_text")
     raw_id_fields = ("post",)
+
+
+@admin.register(KnownArtist)
+class KnownArtistAdmin(admin.ModelAdmin):
+    """Add an artist here (source "Manual") when the parser keeps getting one the wrong
+    way round and neither Lidarr nor MusicBrainz has taught it yet."""
+
+    list_display = ("name", "norm", "source", "created_at")
+    list_filter = ("source",)
+    search_fields = ("name", "norm")
+    readonly_fields = ("norm",)
+
+    def save_model(self, request, obj, form, change):
+        obj.norm = KnownArtist.normalise(obj.name)
+        super().save_model(request, obj, form, change)

@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Artist/title orientation fix** for music recommendations -- "All I wanna do - Sheryl
+  crow" was being stored (and shown, pushed and searched) as artist "All I wanna do".
+  Three layers: (1) the parser now consults a `KnownArtist` table (new model; seeded
+  from Lidarr's library, grown by every MusicBrainz confirmation, editable in the admin)
+  to decide which half of an "X - Y" is the artist, applies one orientation per comment
+  (a single recognisable artist flips its sibling lines too) and no longer drops lines
+  whose title starts like a sentence ("This kiss - Faith Hill") when the comment is
+  demonstrably "Title - Artist"; (2) the dedupe key is orientation-insensitive, so both
+  spellings merge into one recommendation, a corrected row survives re-parsing, and an
+  unverified row adopts the parser's orientation on re-parse once it has evidence;
+  (3) MusicBrainz is the referee: `enrich.resolve_recording()` looks a pair up as stored
+  then reversed, and a match on the reversed pair corrects the row in place (never a
+  human-edited one), stamps the new `Recommendation.verified_at`, and teaches the
+  artist. Runs on the detail page (with a note when it did) and in the new
+  `verify_recommendations` command, which the sync sidecar runs after every sync
+  (`SYNC_VERIFY_LIMIT`, default 100, paced at 2 s/request since MusicBrainz's 1 req/s
+  limit is per IP and shared with the web container; a 503 gets one polite retry).
+  Migration `vibes 0002`. 14 new tests.
+
+### Fixed
+
+- Music detail page raised a template error when Last.fm was disabled and MusicBrainz
+  returned no track length (failed lookup inside a `|default:` argument); the length is
+  now resolved in Python like the other hints.
+
 - **Recommendation detail pages** (`/rec/<pk>/`, linked from every row's title). Movies:
   everything TheMovieDB returns in one `append_to_response` call -- backdrop, poster,
   tagline, synopsis, rating/votes, runtime, age rating (GB preferred), genres, embedded

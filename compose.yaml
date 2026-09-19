@@ -40,6 +40,7 @@ services:
       MEDIA_DATA_DIR: /media-cache
       SYNC_INTERVAL: "1800"       # seconds between syncs
       SYNC_MAX_COMMENTS: "40"     # comment threads fetched per sync
+      SYNC_VERIFY_LIMIT: "100"    # music recs checked against MusicBrainz after each sync (~2 s each)
     volumes:
       - ./data:/data
       - ${MEDIA_HOST_PATH:-./data/media}:/media-cache
